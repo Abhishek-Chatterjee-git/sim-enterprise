@@ -1,20 +1,22 @@
 services:
-  enterprise-ecom:
-    build:
-      context: ../..
-      dockerfile: sim-enterprise/ecom-app/Dockerfile
-    container_name: enterprise-ecom-app
+  ecom-storefront:
+    build: .
+    container_name: ecom-storefront
     restart: unless-stopped
     ports:
       - "3000:3000"
-      - "3001:3001"
     environment:
+      - APP_MODE=storefront
       - ECOM_PORT=3000
-      - ADMIN_PORT=3001
-      - DB_PATH=/app/data/enterprise_data.sqlite
-      - NODE_ENV=production
-    volumes:
-      - ecom_data:/app/data
+      - DB_CONNECTION_STRING=postgres://app_user:SecurePass2025@10.10.2.3:5432/enterprise_ecom
 
-volumes:
-  ecom_data:
+  ecom-admin:
+    build: .
+    container_name: ecom-admin
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - APP_MODE=admin
+      - ADMIN_PORT=3000
+      - DB_CONNECTION_STRING=postgres://app_user:SecurePass2025@10.10.2.3:5432/enterprise_ecom

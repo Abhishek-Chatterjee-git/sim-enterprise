@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Artisan Crafts — Luxury Goods & Modern Living</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            canvasNight: '#000000',
+            canvasCream: '#fbfbf5',
+            aloe: '#c1fbd4',
+            pistachio: '#d4f9e0',
+            hairlineLight: '#e4e4e7',
+            shade30: '#d4d4d8',
+            shade40: '#a1a1aa',
+            shade50: '#71717a',
+            shade70: '#3f3f46',
+            ink: '#000000',
+          },
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            display: ['Inter Display', 'Helvetica', 'Arial', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-feature-settings: "ss03" 1; }
+    .shadow-stacked-light {
+      box-shadow: 0 8px 8px rgba(0,0,0,0.06), 0 4px 4px rgba(0,0,0,0.04), 0 2px 2px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.06);
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-canvasCream text-ink font-sans flex flex-col selection:bg-aloe selection:text-black">
+
+  <!-- Top Dark Navigation Bar -->
+  <header class="bg-canvasNight text-white px-6 lg:px-12 h-16 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center space-x-4">
+      <a href="/" class="w-7 h-7 rounded-full bg-white flex items-center justify-center font-bold text-xs text-black tracking-tighter">
+        AC
+      </a>
+      <a href="/" class="font-light text-lg tracking-wide uppercase font-display text-white">Artisan Crafts</a>
+      <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-aloe text-black font-semibold uppercase tracking-wider hidden sm:inline">DPDP Protected</span>
+    </div>
+
+    <!-- Center Navigation Links -->
+    <nav class="hidden md:flex items-center space-x-6 text-sm text-shade30 font-light">
+      <a href="#catalog" class="hover:text-white transition-colors">Artisan Catalog</a>
+      <a href="/privacy-notice" class="hover:text-white transition-colors">Privacy Notice (DPDP)</a>
+      <a href="/privacy-center" class="text-aloe hover:underline">Customer Privacy Portal</a>
+    </nav>
+
+    <!-- Right Quick Actions: Cart & Auth -->
+    <div class="flex items-center space-x-3">
+      <!-- Shopping Cart Button -->
+      <button onclick="toggleCartDrawer()" class="relative p-2 rounded-full text-shade30 hover:text-white hover:bg-white/10 transition-all">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"></path></svg>
+        <span id="cart-count-badge" class="absolute top-0 right-0 w-4 h-4 rounded-full bg-aloe text-black text-[10px] font-bold flex items-center justify-center">0</span>
+      </button>
+
+      <!-- Auth State: Guest or Logged-in Customer -->
+      <div id="nav-guest" class="flex items-center space-x-2">
+        <button onclick="openSignupModal()" class="px-4 py-2 rounded-full text-xs font-semibold bg-white text-black hover:bg-shade30 transition-all">
+          Create Account
+        </button>
+        <button onclick="openLoginModal()" class="px-4 py-2 rounded-full text-xs font-medium border border-white/40 text-white hover:bg-white/10 transition-all">
+          Sign In
+        </button>
+      </div>
+
+      <div id="nav-user" class="hidden flex items-center space-x-2">
+        <a href="/privacy-center" class="px-3.5 py-1.5 rounded-full text-xs font-medium bg-aloe text-black hover:opacity-90 transition-all">
+          <span id="nav-user-name">Customer</span>
+        </a>
+        <button onclick="logoutCustomer()" class="text-xs text-shade40 hover:text-white px-2">Sign Out</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Banner -->
+  <section class="bg-canvasNight text-white py-16 lg:py-20 px-6 lg:px-12 border-b border-white/10">
+    <div class="max-w-6xl mx-auto space-y-6">
+      <div class="text-xs tracking-[0.2em] uppercase text-shade40 font-medium">Bespoke Living · Ethical Craft</div>
+      <h1 class="text-4xl sm:text-6xl font-extralight tracking-tight leading-[1.05] font-display">
+        Handcrafted Goods.<br>
+        <span class="font-normal text-aloe">Strict Privacy by Design.</span>
+      </h1>
+      <p class="text-base sm:text-lg text-shade40 max-w-2xl font-light leading-relaxed">
+        Discover hand-thrown ceramics, Himalayan cashmere, and Moroccan brassware. Built with statutory compliance under India's Digital Personal Data Protection Act (DPDP Act 2025).
+      </p>
+      <div class="pt-2 flex flex-wrap gap-4">
+        <button onclick="document.getElementById('catalog').scrollIntoView({behavior: 'smooth'})" class="px-7 py-3 rounded-full text-sm font-semibold bg-white text-black hover:bg-shade30 transition-all shadow-lg">
+          Browse Catalog
+        </button>
+        <a href="/privacy-notice" class="px-7 py-3 rounded-full text-sm font-medium border border-white/40 text-white hover:bg-white/10 transition-all">
+          Read Privacy Policy →
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Product Catalog Grid -->
+  <section id="catalog" class="py-14 px-6 lg:px-12 max-w-6xl mx-auto w-full space-y-8">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div>
+        <h2 class="text-3xl font-light tracking-tight font-display">Curated Artisan Goods</h2>
+        <p class="text-xs text-shade50 mt-1">Live products from our enterprise database.</p>
+      </div>
+      <div class="flex items-center space-x-2 text-xs">
+        <button onclick="fetchCatalog()" class="px-3.5 py-1.5 rounded-full bg-white border border-hairlineLight text-black font-medium hover:bg-canvasCream">
+          Refresh Inventory
+        </button>
+      </div>
+    </div>
+
+    <!-- Product Grid Injected via JS -->
+    <div id="product-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div class="col-span-full py-12 text-center text-xs text-shade50">Loading products from database...</div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="mt-auto bg-canvasNight text-white py-12 px-6 lg:px-12 border-t border-white/10 text-xs font-light">
+    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      <div class="space-y-1">
+        <div class="font-normal uppercase tracking-wider">Artisan Crafts Enterprise</div>
+        <div class="text-shade40">Operating under the Digital Personal Data Protection Act, 2025.</div>
+      </div>
+      <div class="flex items-center space-x-6 text-shade30">
+        <a href="/privacy-notice" class="hover:text-white transition-colors">Statutory Privacy Notice</a>
+        <a href="/privacy-center" class="hover:text-white transition-colors">Customer Privacy Portal</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Slide-out Shopping Cart Drawer -->
+  <div id="cart-drawer" class="fixed inset-0 z-50 hidden bg-black/60 backdrop-blur-sm flex justify-end">
+    <div class="bg-white w-full max-w-md h-full p-6 shadow-2xl flex flex-col justify-between">
+      <div class="space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-hairlineLight">
+          <h3 class="text-lg font-medium font-display">Your Shopping Bag</h3>
+          <button onclick="toggleCartDrawer()" class="text-shade50 hover:text-black">✕</button>
+        </div>
+
+        <div id="cart-items-list" class="space-y-3 max-h-[60vh] overflow-y-auto">
+          <!-- Injected via JS -->
+        </div>
+      </div>
+
+      <div class="space-y-3 pt-4 border-t border-hairlineLight text-xs">
+        <div class="flex justify-between text-sm font-semibold">
+          <span>Subtotal</span>
+          <span id="cart-total-price">₹0.00</span>
+        </div>
+        <div class="text-[11px] text-shade50">
+          Order processed under statutory essential notice for delivery & GST invoicing.
+        </div>
+        <button onclick="checkoutCart()" class="w-full py-3.5 rounded-full text-xs font-semibold bg-black text-white hover:bg-shade70 shadow-md">
+          Place Order & Checkout →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Customer Signup with DPDP Statutory Notice -->
+  <div id="modal-signup" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-canvasLight border border-hairlineLight rounded-2xl max-w-lg w-full p-8 space-y-5 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-3 border-b border-hairlineLight">
+        <div>
+          <h3 class="text-lg font-normal text-black font-display">Create Account & Review Consent</h3>
+          <p class="text-xs text-shade50">Statutory Notice under DPDP Act 2025 (Section 5 & 6)</p>
+        </div>
+        <button onclick="closeSignupModal()" class="text-shade50 hover:text-black text-base">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-black font-medium mb-1">Full Name *</label>
+            <input id="reg-name" type="text" placeholder="e.g. Aditi Rao" class="w-full bg-canvasCream border border-hairlineLight rounded-lg px-3 py-2 text-black focus:outline-none focus:border-black">
+          </div>
+          <div>
+            <label class="block text-black font-medium mb-1">Email Address *</label>
+            <input id="reg-email" type="email" placeholder="aditi@example.com" class="w-full bg-canvasCream border border-hairlineLight rounded-lg px-3 py-2 text-black focus:outline-none focus:border-black">
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-black font-medium mb-1">Password *</label>
+            <input id="reg-password" type="password" placeholder="Create a secure password" class="w-full bg-canvasCream border border-hairlineLight rounded-lg px-3 py-2 text-black focus:outline-none focus:border-black">
+          </div>
+          <div>
+            <label class="block text-black font-medium mb-1">Phone Number *</label>
+            <input id="reg-phone" type="text" placeholder="10-digit mobile" class="w-full bg-canvasCream border border-hairlineLight rounded-lg px-3 py-2 text-black focus:outline-none focus:border-black">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-black font-medium mb-1">Delivery Address</label>
+          <input id="reg-address" type="text" placeholder="Street address, City, Pincode" class="w-full bg-canvasCream border border-hairlineLight rounded-lg px-3 py-2 text-black focus:outline-none focus:border-black">
+        </div>
+
+        <!-- DPDP Statutory Notice & Granular Consent Box -->
+        <div class="p-4 rounded-xl bg-pistachio border border-hairlineLight space-y-2.5 mt-2">
+          <div class="font-semibold text-black text-xs flex items-center justify-between">
+            <span>DPDP Statutory Notice (v2.1_dpdp2025)</span>
+            <a href="/privacy-notice" target="_blank" class="text-[10px] text-black underline">Read Policy</a>
+          </div>
+          
+          <label class="flex items-start space-x-2.5 cursor-pointer">
+            <input id="consent-essential" type="checkbox" checked disabled class="mt-0.5 rounded text-black">
+            <span class="text-[11px] text-black/90">
+              <strong>1. Essential Order Fulfillment (Mandatory):</strong> Collection of name, delivery address, and payment references for processing orders and tax compliance.
+            </span>
+          </label>
+
+          <label class="flex items-start space-x-2.5 cursor-pointer">
+            <input id="consent-marketing" type="checkbox" checked class="mt-0.5 rounded text-black">
+            <span class="text-[11px] text-black/90">
+              <strong>2. Promotional Offers & SMS Alerts (Optional):</strong> Direct mobile notifications for discounts and deals. Revocable anytime.
+            </span>
+          </label>
+
+          <label class="flex items-start space-x-2.5 cursor-pointer">
+            <input id="consent-analytics" type="checkbox" checked class="mt-0.5 rounded text-black">
+            <span class="text-[11px] text-black/90">
+              <strong>3. Storefront Recommendations (Optional):</strong> Pseudonymized telemetry to tailor catalog collections.
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-2 pt-3 border-t border-hairlineLight">
+        <button onclick="closeSignupModal()" class="px-5 py-2.5 rounded-full text-xs text-shade50 hover:text-black">Cancel</button>
+        <button onclick="submitSignup()" class="px-6 py-2.5 rounded-full text-xs font-semibold text-white bg-black hover:bg-shade70 transition-all shadow-md">
+          Accept Notice & Register
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Customer Login -->
+  <div id="modal-login" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-canvasLight border border-hairlineLight rounded-2xl max-w-sm w-full p-8 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between pb-3 border-b border-hairlineLight">
+        <h3 class="text-lg font-normal text-black font-display">Customer Sign In</h3>
+        <button onclick="closeLoginModal()" class="text-shade50 hover:text-black">✕</button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block text-black font-medium mb-1">Email Address</label>
+          <input id="login-email" type="email" placeholder="you@example.com" class="w-full bg-canvasCream border border-hairlineLight rounded-lg px-3 py-2 text-black focus:outline-none focus:border-black">
+        </div>
+        <div>
+          <label class="block text-black font-medium mb-1">Password</label>
+          <input id="login-password" type="password" placeholder="Enter password" class="w-full bg-canvasCream border border-hairlineLight rounded-lg px-3 py-2 text-black focus:outline-none focus:border-black">
+        </div>
+      </div>
+
+      <div class="flex justify-end space-x-2 pt-3 border-t border-hairlineLight">
+        <button onclick="closeLoginModal()" class="px-4 py-2 rounded-full text-xs text-shade50">Cancel</button>
+        <button onclick="submitLogin()" class="px-5 py-2 rounded-full text-xs font-semibold bg-black text-white hover:bg-shade70">Sign In</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

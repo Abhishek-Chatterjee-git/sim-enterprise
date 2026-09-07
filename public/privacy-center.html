@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Privacy & Rights Portal — Artisan Crafts (DPDP Act 2025)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            canvasNight: '#000000',
+            canvasCream: '#fbfbf5',
+            aloe: '#c1fbd4',
+            pistachio: '#d4f9e0',
+            hairlineLight: '#e4e4e7',
+            shade30: '#d4d4d8',
+            shade50: '#71717a',
+            ink: '#000000',
+          },
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+            display: ['Inter Display', 'Helvetica', 'Arial', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-feature-settings: "ss03" 1; }
+    .shadow-stacked-light {
+      box-shadow: 0 8px 8px rgba(0,0,0,0.06), 0 4px 4px rgba(0,0,0,0.04), 0 2px 2px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.06);
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-canvasCream text-ink font-sans flex flex-col selection:bg-aloe selection:text-black">
+
+  <!-- Top Dark Navigation Bar -->
+  <header class="bg-canvasNight text-white px-6 lg:px-12 h-16 flex items-center justify-between sticky top-0 z-40">
+    <div class="flex items-center space-x-4">
+      <a href="/" class="w-7 h-7 rounded-full bg-white flex items-center justify-center font-bold text-xs text-black tracking-tighter">
+        AC
+      </a>
+      <a href="/" class="font-light text-lg tracking-wide uppercase font-display text-white">Artisan Crafts</a>
+      <span class="text-[10px] px-2.5 py-0.5 rounded-full bg-aloe text-black font-semibold uppercase tracking-wider hidden sm:inline">Privacy Center</span>
+    </div>
+
+    <nav class="flex items-center space-x-6 text-sm text-shade30 font-light">
+      <a href="/" class="hover:text-white transition-colors">← Back to Storefront</a>
+      <a href="/privacy-notice" class="hover:text-white transition-colors">Statutory Notice</a>
+    </nav>
+  </header>
+
+  <!-- Main Privacy Center Container -->
+  <main class="flex-1 max-w-5xl mx-auto w-full px-6 py-12 space-y-8">
+    
+    <div class="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-hairlineLight gap-4">
+      <div>
+        <span class="text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full bg-aloe text-black">Self-Service DPDP Portal</span>
+        <h1 class="text-3xl font-light tracking-tight mt-2 font-display">Data Principal Privacy & Consent Center</h1>
+        <p class="text-xs text-shade50 mt-1">Exercise your statutory rights under the Digital Personal Data Protection Act 2025.</p>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <button onclick="downloadDataExport()" class="px-4 py-2 rounded-full text-xs font-semibold bg-white border border-hairlineLight text-black hover:bg-canvasCream shadow-sm flex items-center space-x-1.5 transition-all">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+          <span>Export My Data (JSON)</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Active Principal Information Card -->
+    <div id="auth-warning" class="hidden p-6 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-2">
+      <div class="font-semibold text-sm">Please sign in to your account</div>
+      <p>You need to be logged into your customer account to view your privacy settings and registered details.</p>
+      <a href="/" class="inline-block px-4 py-2 rounded-full bg-black text-white font-medium mt-2">Go to Storefront to Sign In →</a>
+    </div>
+
+    <div id="portal-content" class="space-y-6">
+      <div class="bg-white rounded-2xl border border-hairlineLight p-6 shadow-stacked-light space-y-4">
+        <div class="flex items-center justify-between pb-3 border-b border-hairlineLight">
+          <h2 class="text-base font-semibold text-black font-display">Registered Customer Profile</h2>
+          <span class="text-xs font-mono text-shade50">Customer ID: <strong id="center-principal-id" class="text-black font-medium">—</strong></span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
+          <div class="p-3 rounded-xl bg-canvasCream border border-hairlineLight">
+            <div class="text-[10px] text-shade50 uppercase">Full Name</div>
+            <div id="center-name" class="text-sm font-semibold text-black mt-0.5">—</div>
+          </div>
+          <div class="p-3 rounded-xl bg-canvasCream border border-hairlineLight">
+            <div class="text-[10px] text-shade50 uppercase">Email Address</div>
+            <div id="center-email" class="text-sm font-semibold text-black mt-0.5">—</div>
+          </div>
+          <div class="p-3 rounded-xl bg-canvasCream border border-hairlineLight">
+            <div class="text-[10px] text-shade50 uppercase">Phone Number</div>
+            <div id="center-phone" class="text-sm font-semibold text-black mt-0.5">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Consent Purpose Controls -->
+      <div class="bg-white rounded-2xl border border-hairlineLight p-6 shadow-stacked-light space-y-5">
+        <div>
+          <h2 class="text-base font-semibold text-black font-display">Active Consent Preferences</h2>
+          <p class="text-xs text-shade50 mt-0.5">You can withdraw consent for optional marketing or analytics purposes at any time.</p>
+        </div>
+
+        <div class="space-y-3">
+          <!-- Essential -->
+          <div class="p-4 rounded-xl bg-canvasCream border border-hairlineLight flex items-center justify-between">
+            <div class="space-y-0.5">
+              <div class="text-sm font-semibold text-black">1. Essential Order Fulfillment & Invoicing</div>
+              <div class="text-xs text-shade50">Collection of name and delivery address for processing and shipping orders.</div>
+            </div>
+            <span class="px-3 py-1 rounded-full text-xs font-semibold bg-shade30 text-black">Mandatory</span>
+          </div>
+
+          <!-- Marketing Promo -->
+          <div class="p-4 rounded-xl bg-canvasCream border border-hairlineLight flex items-center justify-between">
+            <div class="space-y-0.5">
+              <div class="text-sm font-semibold text-black">2. Promotional Offers & SMS Alerts</div>
+              <div class="text-xs text-shade50">Direct mobile messaging for discounts and store alerts.</div>
+              <div id="status-marketing" class="text-[10px] font-mono text-emerald-700 font-semibold pt-1">● Active Consent</div>
+            </div>
+            <div class="flex items-center space-x-2">
+              <button id="btn-withdraw-promo" onclick="withdrawPurpose('marketing_promo')" class="px-4 py-2 rounded-full text-xs font-semibold bg-red-100 text-red-700 hover:bg-red-200 transition-all">
+                Withdraw Consent
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right to Erasure -->
+      <div class="bg-red-50 rounded-2xl border border-red-200 p-6 space-y-4">
+        <div>
+          <h2 class="text-lg font-semibold text-red-900 font-display">Section 12: Right to Erasure (Account Deletion)</h2>
+          <p class="text-xs text-red-700 mt-1 leading-relaxed">
+            Requesting erasure will remove your personal data from active systems and place transaction records into cold retention quarantine for statutory tax/audit compliance before permanent automated deletion.
+          </p>
+        </div>
+
+        <div class="pt-2">
+          <button onclick="executeAccountErasure()" class="px-6 py-3 rounded-full text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-all shadow-md flex items-center space-x-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+            <span>Permanently Delete My Account & Personal Data</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    let loggedUser = null;
+
+    function initPortal() {
+      const savedUser = localStorage.getItem('dpdp_cust_user');
+      if (!savedUser) {
+        document.getElementById('auth-warning').classList.remove('hidden');
+        document.getElementById('portal-content').classList.add('hidden');
+        return;
+      }
+
+      loggedUser = JSON.parse(savedUser);
+      document.getElementById('center-principal-id').textContent = loggedUser.id;
+      document.getElementById('center-name').textContent = loggedUser.fullName;
+      document.getElementById('center-email').textContent = loggedUser.email;
+      document.getElementById('center-phone').textContent = loggedUser.phone;
+
+      const hasMarketing = (loggedUser.consentPurposes || []).includes('marketing_promo');
+      const marketingStatus = document.getElementById('status-marketing');
+      const withdrawBtn = document.getElementById('btn-withdraw-promo');
+
+      if (!hasMarketing) {
+        marketingStatus.textContent = '● Consent Withdrawn';
+        marketingStatus.className = 'text-[10px] font-mono text-red-600 font-semibold pt-1';
+        withdrawBtn.disabled = true;
+        withdrawBtn.className = 'px-4 py-2 rounded-full text-xs font-semibold bg-slate-100 text-slate-400 cursor-not-allowed';
+      }
+    }
+
+    async function withdrawPurpose(purpose) {
+      if (!loggedUser) return;
+      try {
+        const res = await fetch('/api/privacy/consent/withdraw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: loggedUser.id, purposesWithdrawn: [purpose] }),
+        });
+
+        if (res.ok) {
+          loggedUser.consentPurposes = (loggedUser.consentPurposes || []).filter(p => p !== purpose);
+          localStorage.setItem('dpdp_cust_user', JSON.stringify(loggedUser));
+          alert(`Consent withdrawn for: ${purpose}.\n\nYour preference has been recorded in the database.`);
+          initPortal();
+        }
+      } catch (e) {
+        alert('Failed to withdraw consent.');
+      }
+    }
+
+    async function downloadDataExport() {
+      if (!loggedUser) return;
+      try {
+        const res = await fetch(`/api/privacy/data-export?userId=${loggedUser.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `DPDP_Data_Export_${loggedUser.id}.json`;
+          a.click();
+        }
+      } catch (e) {
+        alert('Export failed.');
+      }
+    }
+
+    async function executeAccountErasure() {
+      if (!loggedUser) return;
+      const confirmDelete = confirm('Are you sure you want to permanently delete your account?\n\nThis will mask your personal data under DPDP Section 12.');
+      if (!confirmDelete) return;
+
+      try {
+        const res = await fetch('/api/privacy/dsr/erasure', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: loggedUser.id }),
+        });
+
+        if (res.ok) {
+          alert('Account deletion completed. Personal data masked.');
+          localStorage.clear();
+          window.location.href = '/';
+        }
+      } catch (e) {
+        alert('Erasure failed.');
+      }
+    }
+
+    initPortal();
+  </script>
+</body>
+</html>

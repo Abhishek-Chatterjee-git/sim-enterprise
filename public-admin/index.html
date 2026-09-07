@@ -60,13 +60,19 @@
     </div>
 
     <!-- Logged in Admin Badge -->
-    <div class="p-4 border-t border-slate-800 text-xs">
+    <div class="p-4 border-t border-slate-800 text-xs space-y-2">
       <div class="flex items-center justify-between">
         <div>
-          <div id="admin-user-name" class="font-medium text-white">Rajesh Kumar</div>
-          <div class="text-[10px] text-slate-400">Store Manager</div>
+          <div id="admin-user-name" class="font-medium text-white">Staff Member</div>
+          <div id="admin-user-role" class="text-[10px] text-slate-400">Operations</div>
         </div>
-        <a href="http://localhost:3000" target="_blank" class="text-[10px] text-indigo-400 hover:underline">
+        <button onclick="adminLogout()" class="text-[10px] text-rose-400 hover:text-rose-300 font-medium px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 transition-colors">
+          Sign Out
+        </button>
+      </div>
+      <div class="flex items-center justify-between pt-1 text-[10px] text-slate-500">
+        <span>Public Store</span>
+        <a href="http://10.10.1.11:3000" target="_blank" class="text-indigo-400 hover:underline">
           View Store ↗
         </a>
       </div>
@@ -226,6 +232,46 @@
       <div class="flex justify-end space-x-2 pt-3 border-t border-cardBorder">
         <button onclick="closeAddProductModal()" class="px-4 py-2 rounded-lg text-xs text-slate-600 hover:bg-slate-100">Cancel</button>
         <button onclick="submitNewProduct()" class="px-5 py-2 rounded-lg text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700">Save Product</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Enterprise Admin Login Overlay -->
+  <div id="modal-admin-login" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-8 space-y-6 shadow-2xl border border-slate-200">
+      <div class="text-center space-y-2">
+        <div class="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-lg mx-auto shadow-md shadow-indigo-200">
+          AC
+        </div>
+        <h2 class="text-xl font-bold text-slate-900 tracking-tight">Artisan Crafts Operations</h2>
+        <p class="text-xs text-slate-500">Sign in with your enterprise staff credentials to access operations & inventory controls.</p>
+      </div>
+
+      <div id="login-error-msg" class="hidden p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium"></div>
+
+      <form id="admin-login-form" onsubmit="handleAdminLogin(event)" class="space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1.5">Staff Email Address</label>
+          <input id="login-email" type="email" required value="admin@artisan-crafts.in" class="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all">
+        </div>
+
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1.5">Password</label>
+          <input id="login-password" type="password" required value="Admin@2025" placeholder="••••••••" class="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-600 focus:border-transparent transition-all">
+        </div>
+
+        <button type="submit" id="btn-login-submit" class="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-all shadow-md shadow-indigo-100 flex items-center justify-center space-x-2">
+          <span>Sign In to Operations Console</span>
+        </button>
+      </form>
+
+      <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
+        <div class="font-semibold text-slate-800 flex items-center space-x-1.5">
+          <span>🔑</span>
+          <span>Enterprise Admin Credentials:</span>
+        </div>
+        <div class="font-mono text-[10px] text-indigo-700">Email: admin@artisan-crafts.in</div>
+        <div class="font-mono text-[10px] text-indigo-700">Password: Admin@2025</div>
       </div>
     </div>
   </div>

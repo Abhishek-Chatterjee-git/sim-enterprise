@@ -1,8 +1,110 @@
 // Enterprise Operations & Inventory Dashboard
-
 let activeTab = 'inventory';
 
+// Authentication State Management
+function checkAdminAuth() {
+  const token = localStorage.getItem('adminToken');
+  const empJson = localStorage.getItem('adminEmployee');
+  const modal = document.getElementById('modal-admin-login');
+
+  if (!token || !empJson) {
+    if (modal) modal.classList.remove('hidden');
+    return false;
+  }
+
+  try {
+    const employee = JSON.parse(empJson);
+    const nameEl = document.getElementById('admin-user-name');
+    const roleEl = document.getElementById('admin-user-role');
+    if (nameEl) nameEl.textContent = employee.fullName || employee.email || 'Admin Staff';
+    if (roleEl) roleEl.textContent = `${employee.role || 'MANAGER'} (${employee.department || 'Operations'})`;
+    if (modal) modal.classList.add('hidden');
+    return true;
+  } catch (e) {
+    localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminEmployee');
+    if (modal) modal.classList.remove('hidden');
+    return false;
+  }
+}
+
+async function handleAdminLogin(event) {
+  if (event) event.preventDefault();
+  const emailInput = document.getElementById('login-email');
+  const passInput = document.getElementById('login-password');
+  const errorEl = document.getElementById('login-error-msg');
+  const submitBtn = document.getElementById('btn-login-submit');
+
+  const email = emailInput ? emailInput.value.trim() : '';
+  const password = passInput ? passInput.value : '';
+
+  if (errorEl) {
+    errorEl.classList.add('hidden');
+    errorEl.textContent = '';
+  }
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `<span>Signing in...</span>`;
+  }
+
+  try {
+    const res = await fetch('/api/admin/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      if (errorEl) {
+        errorEl.textContent = data.error || 'Authentication failed. Please verify credentials.';
+        errorEl.classList.remove('hidden');
+      }
+      return;
+    }
+
+    localStorage.setItem('adminToken', data.token);
+    localStorage.setItem('adminEmployee', JSON.stringify(data.employee));
+
+    const modal = document.getElementById('modal-admin-login');
+    if (modal) modal.classList.add('hidden');
+
+    checkAdminAuth();
+    switchTab(activeTab);
+  } catch (err) {
+    if (errorEl) {
+      errorEl.textContent = 'Network or server error. Please try again.';
+      errorEl.classList.remove('hidden');
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = `<span>Sign In to Operations Console</span>`;
+    }
+  }
+}
+
+function adminLogout() {
+  localStorage.removeItem('adminToken');
+  localStorage.removeItem('adminEmployee');
+  const modal = document.getElementById('modal-admin-login');
+  if (modal) modal.classList.remove('hidden');
+
+  // Clear tables
+  const invTbody = document.getElementById('inventory-tbody');
+  const ordTbody = document.getElementById('orders-tbody');
+  const cusTbody = document.getElementById('customers-tbody');
+  const empTbody = document.getElementById('employees-tbody');
+  if (invTbody) invTbody.innerHTML = '';
+  if (ordTbody) ordTbody.innerHTML = '';
+  if (cusTbody) cusTbody.innerHTML = '';
+  if (empTbody) empTbody.innerHTML = '';
+}
+
 function switchTab(tab) {
+  if (!checkAdminAuth()) return;
   activeTab = tab;
   const tabs = ['inventory', 'orders', 'customers', 'employees'];
 
@@ -59,6 +161,7 @@ function switchTab(tab) {
 
 // 1. Fetch Inventory with silent auto-refresh support
 async function fetchInventory(silent = false) {
+  if (!localStorage.getItem('adminToken')) return;
   const tbody = document.getElementById('inventory-tbody');
   if (!silent && (!tbody.innerHTML || tbody.innerHTML.trim() === '')) {
     tbody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-slate-400">Loading products...</td></tr>`;
@@ -108,6 +211,7 @@ async function fetchInventory(silent = false) {
 
 // 2. Fetch Orders with silent auto-refresh support
 async function fetchOrders(silent = false) {
+  if (!localStorage.getItem('adminToken')) return;
   const tbody = document.getElementById('orders-tbody');
   if (!silent && (!tbody.innerHTML || tbody.innerHTML.trim() === '')) {
     tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">Loading orders...</td></tr>`;
@@ -154,6 +258,7 @@ async function fetchOrders(silent = false) {
 
 // 3. Fetch Customers with silent auto-refresh support
 async function fetchCustomers(silent = false) {
+  if (!localStorage.getItem('adminToken')) return;
   const tbody = document.getElementById('customers-tbody');
   if (!silent && (!tbody.innerHTML || tbody.innerHTML.trim() === '')) {
     tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">Loading customers...</td></tr>`;
@@ -194,6 +299,7 @@ async function fetchCustomers(silent = false) {
 
 // 4. Fetch Employees
 async function fetchEmployees() {
+  if (!localStorage.getItem('adminToken')) return;
   const tbody = document.getElementById('employees-tbody');
   tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">Loading employees...</td></tr>`;
 
@@ -279,8 +385,9 @@ async function updateStockPrompt(productId, currentStock) {
   }
 }
 
-// Continuous Background Auto-Refresh (every 2.5 seconds)
+// Continuous Background Auto-Refresh (every 3 seconds)
 setInterval(() => {
+  if (!localStorage.getItem('adminToken')) return;
   if (activeTab === 'inventory') {
     fetchInventory(true);
   } else if (activeTab === 'orders') {
@@ -288,7 +395,11 @@ setInterval(() => {
   } else if (activeTab === 'customers') {
     fetchCustomers(true);
   }
-}, 2500);
+}, 3000);
 
-// Initial load
-fetchInventory();
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+  if (checkAdminAuth()) {
+    fetchInventory();
+  }
+});

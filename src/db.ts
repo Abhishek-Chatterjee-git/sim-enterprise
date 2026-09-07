@@ -1,6 +1,7 @@
-import { DatabaseSync } from 'node:sqlite';
 import { createHash, randomBytes } from 'node:crypto';
 import pg from 'pg';
+
+let SqliteDatabaseSync: any = null;
 
 export interface ProductRecord {
   id: string;
@@ -48,7 +49,7 @@ export interface EmployeeRecord {
 }
 
 export class EnterpriseDatabase {
-  private sqliteDb: DatabaseSync | null = null;
+  private sqliteDb: any = null;
   private pgPool: pg.Pool | null = null;
   public isPostgres = false;
   private dbPath: string;
@@ -71,12 +72,20 @@ export class EnterpriseDatabase {
       await this.initPostgres();
     } else {
       console.log('[Enterprise DB] Connecting to local SQLite at', this.dbPath);
-      this.initSqlite();
+      await this.initSqlite();
     }
   }
 
-  private initSqlite(): void {
-    this.sqliteDb = new DatabaseSync(this.dbPath);
+  private async initSqlite(): Promise<void> {
+    if (!SqliteDatabaseSync) {
+      try {
+        const mod = await import('node:sqlite');
+        SqliteDatabaseSync = mod.DatabaseSync;
+      } catch (err) {
+        throw new Error('SQLite requires Node.js >= 22.5.0 or configure PostgreSQL via DB_CONNECTION_STRING');
+      }
+    }
+    this.sqliteDb = new SqliteDatabaseSync(this.dbPath);
     this.sqliteDb.exec('PRAGMA journal_mode = WAL;');
 
     this.sqliteDb.exec(`
@@ -325,7 +334,7 @@ export class EnterpriseDatabase {
     }
   }
 
-  getDb(): DatabaseSync | null {
+  getDb(): any {
     return this.sqliteDb;
   }
 

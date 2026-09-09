@@ -175,6 +175,12 @@ export class EcomServer {
           const body = await this.readJsonBody(req);
           const { email, password } = body;
 
+          if (!email || !password) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'Email and password are required' }));
+            return;
+          }
+
           const user = await this.db.get<any>('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
           if (!user || !verifyPassword(password, user.password_hash)) {
             res.writeHead(401);
@@ -188,7 +194,7 @@ export class EcomServer {
               error: 'Account is pending erasure (Quarantined)',
               status: user.status,
               canReactivate: true,
-              userId: user.id,
+              email: user.email,
             }));
             return;
           }
@@ -218,7 +224,7 @@ export class EcomServer {
           const auth = this.authenticateRequest(req);
           if (!auth) {
             res.writeHead(401);
-            res.end(JSON.stringify({ error: 'Unauthorized' }));
+            res.end(JSON.stringify({ error: 'Authentication required. Please sign in.' }));
             return;
           }
 
@@ -254,7 +260,7 @@ export class EcomServer {
           return;
         }
 
-        // 5. Products Catalog
+        // 5. Products Catalog (Public)
         if (pathname === '/api/products' && method === 'GET') {
           const products = await this.db.all('SELECT * FROM products ORDER BY price DESC');
           res.writeHead(200);
@@ -262,20 +268,46 @@ export class EcomServer {
           return;
         }
 
-        // 6. Orders: Place Order
+        // 6. Orders: Place Order (Authentication Required)
         if (pathname === '/api/orders' && method === 'POST') {
           const auth = this.authenticateRequest(req);
+          if (!auth) {
+            res.writeHead(401);
+            res.end(JSON.stringify({ error: 'Please sign in or create an account to complete your purchase.' }));
+            return;
+          }
+
+          const user = await this.db.get<any>('SELECT * FROM users WHERE id = $1', [auth.userId]);
+          if (!user) {
+            res.writeHead(401);
+            res.end(JSON.stringify({ error: 'Session expired or user not found. Please sign in again.' }));
+            return;
+          }
+
+          if (user.status === 'SOFT_DELETED' || user.status === 'QUARANTINED') {
+            res.writeHead(403);
+            res.end(JSON.stringify({ error: 'Your account is scheduled for erasure. Orders cannot be placed.' }));
+            return;
+          }
+
           const body = await this.readJsonBody(req);
-          const userId = auth?.userId || body.userId || 'usr-mumbai-101';
-          const items = body.items || [];
-          const shippingAddress = body.shippingAddress || '12 MG Road, Mumbai 400001';
+          const items = Array.isArray(body.items) ? body.items : [];
+          if (items.length === 0) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'Cart is empty. Please add items before placing an order.' }));
+            return;
+          }
+
+          const shippingAddress = body.shippingAddress || user.address || '12 MG Road, Mumbai 400001';
           const paymentMethod = body.paymentMethod || 'UPI (Razorpay)';
 
           let totalAmount = 0;
           for (const itm of items) {
-            totalAmount += (Number(itm.unitPrice) || 1000) * (Number(itm.quantity) || 1);
+            const up = Number(itm.unitPrice) || Number(itm.price) || 1000;
+            const qty = Number(itm.quantity) || 1;
+            totalAmount += up * qty;
           }
-          if (totalAmount === 0) totalAmount = 3800;
+          if (totalAmount <= 0) totalAmount = 3800;
 
           const orderId = `ord-${Date.now()}`;
           const orderNum = `ART-2026-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -283,14 +315,16 @@ export class EcomServer {
           await this.db.run(
             `INSERT INTO orders (id, user_id, order_number, total_amount, currency, status, shipping_address, payment_method)
              VALUES ($1, $2, $3, $4, 'INR', 'CONFIRMED', $5, $6)`,
-            [orderId, userId, orderNum, totalAmount, shippingAddress, paymentMethod]
+            [orderId, user.id, orderNum, totalAmount, shippingAddress, paymentMethod]
           );
 
           for (const itm of items) {
+            const up = Number(itm.unitPrice) || Number(itm.price) || 1000;
+            const qty = Number(itm.quantity) || 1;
             await this.db.run(
               `INSERT INTO order_items (id, order_id, product_name, sku, quantity, unit_price, total_price)
                VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-              [`item-${randomBytes(4).toString('hex')}`, orderId, itm.productName || 'Artisan Product', itm.sku || 'SKU-001', itm.quantity || 1, itm.unitPrice || 1000, (itm.quantity || 1) * (itm.unitPrice || 1000)]
+              [`item-${randomBytes(4).toString('hex')}`, orderId, itm.productName || itm.name || 'Artisan Product', itm.sku || 'SKU-001', qty, up, qty * up]
             );
           }
 
@@ -298,7 +332,7 @@ export class EcomServer {
           await this.db.run(
             `INSERT INTO payments (id, order_id, user_id, transaction_id, payment_gateway, amount, currency, status, upi_id)
              VALUES ($1, $2, $3, $4, 'Razorpay', $5, 'INR', 'SUCCESS', $6)`,
-            [`pay-${randomBytes(4).toString('hex')}`, orderId, userId, `txn_rzp_${randomBytes(6).toString('hex')}`, totalAmount, body.upiId || 'customer@okhdfcbank']
+            [`pay-${randomBytes(4).toString('hex')}`, orderId, user.id, `txn_rzp_${randomBytes(6).toString('hex')}`, totalAmount, body.upiId || 'customer@okhdfcbank']
           );
 
           res.writeHead(201);
@@ -306,12 +340,16 @@ export class EcomServer {
           return;
         }
 
-        // 7. Orders: List for user
+        // 7. Orders: List for authenticated user
         if (pathname === '/api/orders' && method === 'GET') {
           const auth = this.authenticateRequest(req);
-          const userId = auth?.userId || 'usr-mumbai-101';
+          if (!auth) {
+            res.writeHead(401);
+            res.end(JSON.stringify({ error: 'Authentication required. Please sign in.' }));
+            return;
+          }
 
-          const orders = await this.db.all<any>('SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+          const orders = await this.db.all<any>('SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC', [auth.userId]);
           for (const o of orders) {
             o.items = await this.db.all('SELECT * FROM order_items WHERE order_id = $1', [o.id]);
           }
@@ -320,42 +358,52 @@ export class EcomServer {
           return;
         }
 
-        // 8. Privacy Center: Status
+        // 8. Privacy Center: Status (Authentication Required)
         if (pathname === '/api/privacy/status' && method === 'GET') {
           const auth = this.authenticateRequest(req);
-          const userId = auth?.userId || 'usr-mumbai-101';
+          if (!auth) {
+            res.writeHead(401);
+            res.end(JSON.stringify({ error: 'Authentication required. Please sign in to view privacy settings.' }));
+            return;
+          }
 
-          const user = await this.db.get<any>('SELECT * FROM users WHERE id = $1', [userId]);
-          const consents = await this.db.all<any>('SELECT * FROM consent_preferences WHERE user_id = $1', [userId]);
+          const user = await this.db.get<any>('SELECT * FROM users WHERE id = $1', [auth.userId]);
+          if (!user) {
+            res.writeHead(404);
+            res.end(JSON.stringify({ error: 'User not found' }));
+            return;
+          }
+
+          const consents = await this.db.all<any>('SELECT * FROM consent_preferences WHERE user_id = $1', [auth.userId]);
 
           res.writeHead(200);
           res.end(JSON.stringify({
-            userId,
-            email: user?.email,
-            status: user?.status,
+            userId: user.id,
+            email: user.email,
+            fullName: user.full_name,
+            status: user.status,
             noticeVersion: '2.1',
             consents: consents.map((c: any) => ({ purposeId: c.purpose_id, isGranted: Boolean(c.is_granted) })),
             noticeDetails: {
-              title: 'DPDP Act 2025 Granular Consent & Privacy Notice (v2.1)',
-              statutoryBasis: 'Digital Personal Data Protection Act 2025 §5 & §6',
+              title: 'Customer Privacy & Preference Notice (v2.1)',
               purposes: [
                 {
                   purposeId: 'essential',
-                  name: 'Essential Order Fulfillment & Statutory Tax Compliance',
-                  description: 'Necessary for processing payments, invoicing, courier delivery, and warranty support.',
+                  name: 'Essential Order Fulfillment & Statutory Compliance',
+                  description: 'Necessary for processing payments, invoicing, courier delivery, and customer warranty support.',
                   isMandatory: true,
                   retentionDays: 2555,
                 },
                 {
                   purposeId: 'marketing',
-                  name: 'Personalized Recommendations & Promotional Offers',
-                  description: 'Special discounts, curated artisan collections, and SMS/Email updates.',
+                  name: 'Personalized Recommendations & Promotional Alerts',
+                  description: 'Special discounts, curated artisan collections, and SMS/Email previews.',
                   isMandatory: false,
                   retentionDays: 365,
                 },
                 {
                   purposeId: 'analytics',
-                  name: 'Behavioral Insights & Website Experience Optimization',
+                  name: 'Behavioral Insights & Storefront Experience Optimization',
                   description: 'Anonymous telemetry to enhance storefront performance and product search relevance.',
                   isMandatory: false,
                   retentionDays: 180,
@@ -366,14 +414,25 @@ export class EcomServer {
           return;
         }
 
-        // 9. Privacy Center: Consent Update (Grant/Revoke)
+        // 9. Privacy Center: Consent Update (Authentication Required)
         if (pathname === '/api/privacy/consent/update' && method === 'POST') {
           const auth = this.authenticateRequest(req);
+          if (!auth) {
+            res.writeHead(401);
+            res.end(JSON.stringify({ error: 'Authentication required. Please sign in to update privacy settings.' }));
+            return;
+          }
+
           const body = await this.readJsonBody(req);
-          const userId = auth?.userId || body.userId || 'usr-mumbai-101';
           const { purposeId, isGranted } = body;
 
-          const user = await this.db.get<any>('SELECT * FROM users WHERE id = $1', [userId]);
+          if (!purposeId) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'Purpose ID is required.' }));
+            return;
+          }
+
+          const user = await this.db.get<any>('SELECT * FROM users WHERE id = $1', [auth.userId]);
           if (!user) {
             res.writeHead(404);
             res.end(JSON.stringify({ error: 'User not found' }));
@@ -386,7 +445,7 @@ export class EcomServer {
             `INSERT INTO consent_preferences (id, user_id, purpose_id, is_granted, notice_version, updated_at)
              VALUES ($1, $2, $3, $4, '2.1', CURRENT_TIMESTAMP)
              ON CONFLICT(user_id, purpose_id) DO UPDATE SET is_granted = $4, updated_at = CURRENT_TIMESTAMP`,
-            [`cp-${userId}-${purposeId}`, userId, purposeId, grantedVal]
+            [`cp-${auth.userId}-${purposeId}`, auth.userId, purposeId, grantedVal]
           );
 
           // Update local Zone Agent in-memory cache
@@ -411,7 +470,7 @@ export class EcomServer {
           await this.db.run(
             `INSERT INTO audit_logs (id, action, user_id, ip_address, user_agent, details)
              VALUES ($1, $2, $3, $4, $5, $6)`,
-            [`log-${Date.now()}`, isGranted ? 'CONSENT_GRANTED' : 'CONSENT_REVOKED', userId, req.socket.remoteAddress || '127.0.0.1', req.headers['user-agent'] || '', `Consent for purpose '${purposeId}' set to ${isGranted}`]
+            [`log-${Date.now()}`, isGranted ? 'CONSENT_GRANTED' : 'CONSENT_REVOKED', auth.userId, req.socket.remoteAddress || '127.0.0.1', req.headers['user-agent'] || '', `Consent for purpose '${purposeId}' set to ${isGranted}`]
           );
 
           res.writeHead(200);
@@ -424,14 +483,19 @@ export class EcomServer {
           return;
         }
 
-        // 10. Privacy Center: Right to Erasure / "Delete My Account" (DPDP Act §12)
+        // 10. Privacy Center: Right to Erasure / "Delete My Account" (Authentication Required)
         if (pathname === '/api/privacy/dsr/erasure' && method === 'POST') {
           const auth = this.authenticateRequest(req);
-          const body = await this.readJsonBody(req);
-          const userId = auth?.userId || body.userId || 'usr-mumbai-101';
-          const reason = body.reason || 'Data Principal exercised DPDP Act §12 Right to Erasure';
+          if (!auth) {
+            res.writeHead(401);
+            res.end(JSON.stringify({ error: 'Authentication required. You must sign in to request account erasure.' }));
+            return;
+          }
 
-          const user = await this.db.get<any>('SELECT * FROM users WHERE id = $1', [userId]);
+          const body = await this.readJsonBody(req);
+          const reason = body.reason || 'Customer initiated account erasure request';
+
+          const user = await this.db.get<any>('SELECT * FROM users WHERE id = $1', [auth.userId]);
           if (!user) {
             res.writeHead(404);
             res.end(JSON.stringify({ error: 'User not found' }));
@@ -441,7 +505,7 @@ export class EcomServer {
           // Step 1: Quarantine / Soft-delete in local database
           await this.db.run(
             `UPDATE users SET status = 'SOFT_DELETED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-            [userId]
+            [auth.userId]
           );
 
           // Step 2: Invalidate local agent consent cache
@@ -464,94 +528,54 @@ export class EcomServer {
           await this.db.run(
             `INSERT INTO audit_logs (id, action, user_id, ip_address, user_agent, details)
              VALUES ($1, 'DSR_ERASURE_REQUESTED', $2, $3, $4, $5)`,
-            [`log-${Date.now()}`, userId, req.socket.remoteAddress || '127.0.0.1', req.headers['user-agent'] || '', `Right to Erasure submitted for ${user.email}. Grace period: 30 days.`]
+            [`log-${Date.now()}`, auth.userId, req.socket.remoteAddress || '127.0.0.1', req.headers['user-agent'] || '', `Right to Erasure submitted for ${user.email}. Grace period: 30 days.`]
           );
 
           res.writeHead(200);
           res.end(JSON.stringify({
             success: true,
             status: 'QUARANTINED_PENDING_ERASURE',
-            message: 'Your account has been quarantined and scheduled for statutory erasure under DPDP Act 2025 §12. You have a 30-day grace period to cancel.',
+            message: 'Your account has been scheduled for erasure. You have a 30-day grace period to restore access.',
             gracePeriodDays: 30,
             requestedAt: new Date().toISOString(),
           }));
           return;
         }
 
-        // 11. Privacy Center: Reactivate Account during grace period
+        // 11. Privacy Center: Reactivate Account during grace period (Requires Credentials)
         if (pathname === '/api/privacy/dsr/reactivate' && method === 'POST') {
           const body = await this.readJsonBody(req);
-          const { email } = body;
+          const { email, password } = body;
+
+          if (!email || !password) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'Email and password are required to restore your account.' }));
+            return;
+          }
 
           const user = await this.db.get<any>('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
-          if (!user) {
-            res.writeHead(404);
-            res.end(JSON.stringify({ error: 'User not found' }));
+          if (!user || !verifyPassword(password, user.password_hash)) {
+            res.writeHead(401);
+            res.end(JSON.stringify({ error: 'Invalid email or password.' }));
             return;
           }
 
           await this.db.run(`UPDATE users SET status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [user.id]);
           await this.syncWithLocalAgent(user.email, 'essential', true);
 
-          res.writeHead(200);
-          res.end(JSON.stringify({ success: true, message: 'Account restored successfully to ACTIVE status.' }));
-          return;
-        }
-
-        // 12. Live DPDP Test Bench: Promotional SMS Dispatch Simulator
-        if (pathname === '/api/marketing/dispatch-promo' && method === 'POST') {
-          const body = await this.readJsonBody(req);
-          const { recipientEmail, promoMessage } = body;
-          const targetEmail = recipientEmail || 'rohit.sharma@example.com';
-
-          // Call local In-VPC Zone Agent hot-path consent check (<1ms)
-          const agentUrl = `http://localhost:${this.config.agentPort}/consent/check?principalId=${encodeURIComponent(targetEmail)}&purpose=marketing`;
-          let consentAllowed = false;
-          let latencyMs = '0.00';
-
-          try {
-            const t0 = performance.now();
-            const agentRes = await fetch(agentUrl, { signal: AbortSignal.timeout(1500) });
-            latencyMs = (performance.now() - t0).toFixed(2);
-
-            if (agentRes.ok) {
-              const consentData = await agentRes.json() as any;
-              consentAllowed = Boolean(consentData.allowed);
-            }
-          } catch {
-            // If agent offline, check local DB fallback
-            const dbCheck = await this.db.get<any>(
-              `SELECT cp.is_granted 
-               FROM consent_preferences cp 
-               JOIN users u ON cp.user_id = u.id 
-               WHERE LOWER(u.email) = LOWER($1) AND cp.purpose_id = 'marketing'`,
-              [targetEmail]
-            );
-            consentAllowed = Boolean(dbCheck?.is_granted);
-          }
-
-          if (!consentAllowed) {
-            res.writeHead(403);
-            res.end(JSON.stringify({
-              success: false,
-              blockedByDpdp: true,
-              statutoryClause: 'DPDP Act 2025 §6(1) Consent Prerequisite',
-              message: `BLOCKED: Marketing processing rejected for ${targetEmail}. Data Principal has revoked or not granted marketing consent.`,
-              latencyMs,
-            }));
-            return;
-          }
+          const token = createSessionToken({ userId: user.id, email: user.email, fullName: user.full_name }, this.config.sessionSecret);
 
           res.writeHead(200);
           res.end(JSON.stringify({
             success: true,
-            dispatched: true,
-            recipient: targetEmail,
-            message: promoMessage || 'Special 25% festive discount on Artisanal Pashmina Shawls!',
-            complianceCheck: {
-              status: 'VERIFIED_ACTIVE_CONSENT',
-              latencyMs,
-              enforcedBy: `In-VPC Zone Agent (Port ${this.config.agentPort})`,
+            message: 'Account restored successfully to ACTIVE status.',
+            token,
+            user: {
+              id: user.id,
+              fullName: user.full_name,
+              email: user.email,
+              phone: user.phone,
+              status: 'ACTIVE',
             },
           }));
           return;
@@ -598,9 +622,10 @@ export class EcomServer {
       res.writeHead(404);
       res.end('Page not found');
     } catch (err: any) {
-      console.error('[Storefront Server] Uncaught error:', err);
+      // Secure Error Handler: Log full internal details internally; return sanitized error to client
+      console.error('[Storefront Server] Internal error:', err);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: err.message || 'Internal Server Error' }));
+      res.end(JSON.stringify({ error: 'An unexpected internal error occurred. Please try again later.' }));
     }
   }
 

@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateCartUI();
 
   // If on Privacy Center page, initialize Privacy Center state
-  if (window.location.pathname.includes('/privacy')) {
+  if (window.location.pathname.includes('/privacy') || window.location.pathname.includes('/privacy-center')) {
     await initPrivacyCenter();
   }
 });
@@ -130,7 +130,7 @@ function renderAuthHeader() {
     container.innerHTML = `
       <div class="flex items-center space-x-2">
         <div class="text-right hidden sm:block">
-          <span class="block text-xs font-semibold text-white">${currentUser.fullName}</span>
+          <span class="block text-xs font-semibold text-white">${currentUser.fullName || 'Customer'}</span>
           <span class="block text-[10px] text-emerald-400 font-mono">${currentUser.email}</span>
         </div>
         <button onclick="handleLogout()" class="text-xs uppercase tracking-wider px-3.5 py-1.5 rounded-full border border-white/20 hover:bg-white/10 text-gray-300 transition">
@@ -240,7 +240,7 @@ async function handleAuthSubmit(e) {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Login failed');
+      if (!res.ok) throw new Error(data.error || 'Invalid credentials');
 
       localStorage.setItem('ecom_token', data.token);
       localStorage.setItem('ecom_user', JSON.stringify(data.user));
@@ -249,12 +249,12 @@ async function handleAuthSubmit(e) {
 
     closeAuthModal();
     renderAuthHeader();
-    if (window.location.pathname.includes('/privacy')) {
+    if (window.location.pathname.includes('/privacy') || window.location.pathname.includes('/privacy-center')) {
       await initPrivacyCenter();
     }
   } catch (err) {
     if (errorMsg) {
-      errorMsg.textContent = err.message;
+      errorMsg.textContent = err.message || 'Authentication error';
       errorMsg.classList.remove('hidden');
     }
   } finally {
@@ -270,8 +270,8 @@ function handleLogout() {
   localStorage.removeItem('ecom_user');
   currentUser = null;
   renderAuthHeader();
-  if (window.location.pathname.includes('/privacy')) {
-    window.location.href = '/';
+  if (window.location.pathname.includes('/privacy') || window.location.pathname.includes('/privacy-center')) {
+    initPrivacyCenter();
   }
 }
 
@@ -295,8 +295,8 @@ async function loadProducts() {
         renderProductGrid();
       }
     }
-  } catch (err) {
-    console.warn('Backend products endpoint unreachable, using reserve catalog:', err);
+  } catch {
+    // Keep reserve catalog quietly
   }
 }
 
@@ -375,7 +375,7 @@ function filterCategory(category) {
 }
 
 // ----------------------------------------------------------------------------
-// 3. Shopping Cart Management & Order Execution
+// 3. Shopping Cart Management & Secure Order Execution
 // ----------------------------------------------------------------------------
 function addToCart(productId) {
   const prod = allProducts.find((p) => p.id === productId);
@@ -449,11 +449,21 @@ function toggleCartDrawer(forceOpen = false) {
 
 async function executeCheckout() {
   if (cart.length === 0) {
-    alert('Your bag is empty!');
+    alert('Your bag is empty! Please select an artisanal item.');
     return;
   }
 
   const token = localStorage.getItem('ecom_token');
+
+  // Security Gate: Customer must sign in before order placement
+  if (!currentUser || !token) {
+    toggleCartDrawer(false);
+    openAuthModal('login');
+    const subtitle = document.getElementById('authModalSubtitle');
+    if (subtitle) subtitle.textContent = 'Please sign in or register to complete your order';
+    return;
+  }
+
   const items = cart.map((i) => ({
     productId: i.id,
     productName: i.name,
@@ -467,10 +477,9 @@ async function executeCheckout() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: token ? `Bearer ${token}` : '',
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        userId: currentUser?.id || 'usr-guest',
         items,
         shippingAddress: currentUser?.address || '12 MG Road, Mumbai, Maharashtra 400018',
         paymentMethod: 'UPI (Razorpay Gateway)',
@@ -478,7 +487,14 @@ async function executeCheckout() {
     });
 
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Checkout failed');
+    if (!res.ok) {
+      if (res.status === 401) {
+        handleLogout();
+        openAuthModal('login');
+        throw new Error('Your session has expired. Please sign in again.');
+      }
+      throw new Error(data.error || 'Unable to complete order.');
+    }
 
     cart = [];
     updateCartUI();
@@ -486,7 +502,7 @@ async function executeCheckout() {
 
     alert(`🎉 Order Placed Successfully!\nOrder Number: ${data.orderNumber}\nAmount: ₹${Number(data.totalAmount).toLocaleString('en-IN')}\n\nA confirmation has been sent to your registered email.`);
   } catch (err) {
-    alert(`Order placement error: ${err.message}`);
+    alert(err.message || 'Unable to place order at this time.');
   }
 }
 
@@ -501,27 +517,39 @@ async function initPrivacyCenter() {
   const analyticsPill = document.getElementById('analyticsStatusPill');
   const toggleMkt = document.getElementById('toggleMarketing');
   const toggleAnl = document.getElementById('toggleAnalytics');
+  const unauthenticatedNotice = document.getElementById('unauthenticatedNotice');
+  const authenticatedSections = document.getElementById('authenticatedSections');
 
   const token = localStorage.getItem('ecom_token');
 
-  if (!currentUser && !token) {
+  // Security Gate: If not authenticated, lock privacy view
+  if (!currentUser || !token) {
+    if (unauthenticatedNotice) unauthenticatedNotice.classList.remove('hidden');
+    if (authenticatedSections) authenticatedSections.classList.add('hidden');
     if (userEmailEl) userEmailEl.textContent = 'Guest Session';
     if (statusBadge) {
       statusBadge.textContent = 'NOT SIGNED IN';
       statusBadge.className = 'inline-block mt-2 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-700';
     }
-    if (toggleMkt) toggleMkt.disabled = true;
-    if (toggleAnl) toggleAnl.disabled = true;
     return;
   }
 
-  const email = currentUser?.email || 'Customer Account';
-  if (userEmailEl) userEmailEl.textContent = email;
+  // Authenticated State
+  if (unauthenticatedNotice) unauthenticatedNotice.classList.add('hidden');
+  if (authenticatedSections) authenticatedSections.classList.remove('hidden');
+
+  if (userEmailEl) userEmailEl.textContent = currentUser.email;
 
   try {
     const res = await fetch('/api/privacy/status', {
-      headers: { Authorization: token ? `Bearer ${token}` : '' },
+      headers: { Authorization: `Bearer ${token}` },
     });
+
+    if (res.status === 401) {
+      handleLogout();
+      return;
+    }
+
     const data = await res.json();
 
     if (data.status === 'SOFT_DELETED' || data.status === 'QUARANTINED') {
@@ -564,14 +592,14 @@ async function initPrivacyCenter() {
         ? 'text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-aloe text-aloe-dark font-semibold'
         : 'text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-red-100 text-red-800 font-semibold';
     }
-  } catch (err) {
-    console.error('Failed to load privacy status:', err);
+  } catch {
+    // Keep safe fallback state
   }
 }
 
 async function handleConsentToggle(purposeId, isGranted) {
   const token = localStorage.getItem('ecom_token');
-  if (!currentUser && !token) {
+  if (!currentUser || !token) {
     openAuthModal('login');
     return;
   }
@@ -590,27 +618,25 @@ async function handleConsentToggle(purposeId, isGranted) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: token ? `Bearer ${token}` : '',
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        userId: currentUser?.id || 'usr-mumbai-101',
         purposeId,
         isGranted,
       }),
     });
 
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Failed to update consent');
-
-    console.log(`[Privacy Center] Consent updated for ${purposeId}: ${isGranted}`);
+    if (!res.ok) throw new Error(data.error || 'Failed to update preferences');
   } catch (err) {
-    alert(`Could not update consent: ${err.message}`);
+    alert(err.message || 'Could not update preferences');
+    await initPrivacyCenter();
   }
 }
 
 function promptErasureModal() {
   const token = localStorage.getItem('ecom_token');
-  if (!currentUser && !token) {
+  if (!currentUser || !token) {
     openAuthModal('login');
     return;
   }
@@ -626,7 +652,7 @@ function closeErasureModal() {
 async function executeAccountErasure() {
   closeErasureModal();
   const token = localStorage.getItem('ecom_token');
-  if (!currentUser && !token) {
+  if (!currentUser || !token) {
     openAuthModal('login');
     return;
   }
@@ -636,10 +662,9 @@ async function executeAccountErasure() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: token ? `Bearer ${token}` : '',
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        userId: currentUser?.id,
         reason: 'Customer initiated Right to Erasure request',
       }),
     });
@@ -650,24 +675,36 @@ async function executeAccountErasure() {
     alert(`🛡️ Right to Erasure Scheduled!\n${data.message}`);
     await initPrivacyCenter();
   } catch (err) {
-    alert(`Erasure failed: ${err.message}`);
+    alert(err.message || 'Erasure request could not be completed.');
   }
 }
 
 async function restoreAccount() {
+  const email = prompt('Enter your registered email address to restore your account:');
+  if (!email) return;
+  const password = prompt('Enter your password:');
+  if (!password) return;
+
   try {
     const res = await fetch('/api/privacy/dsr/reactivate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: currentUser?.email }),
+      body: JSON.stringify({ email: email.trim(), password }),
     });
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Restoration failed');
 
+    if (data.token) {
+      localStorage.setItem('ecom_token', data.token);
+      localStorage.setItem('ecom_user', JSON.stringify(data.user));
+      currentUser = data.user;
+    }
+
     alert('🎉 Account Restored Successfully to ACTIVE status!');
+    renderAuthHeader();
     await initPrivacyCenter();
   } catch (err) {
-    alert(`Restoration failed: ${err.message}`);
+    alert(err.message || 'Restoration failed.');
   }
 }

@@ -1,19 +1,15 @@
 {
-  "name": "@dpdp/ecom-app",
+  "name": "sim-enterprise",
   "version": "1.0.0",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "start:web": "node dist/server.js",
-    "start:worker": "node dist/agent-worker.js",
-    "start:admin": "node dist/admin-server.js",
     "dev": "tsx src/index.ts",
     "test": "tsx src/test.ts"
   },
   "dependencies": {
-    "@dpdp/shared": "^1.0.0",
     "pg": "^8.11.3"
   },
   "devDependencies": {

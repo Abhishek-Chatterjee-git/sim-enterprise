@@ -43,21 +43,18 @@
           </div>
           <div>
             <span class="font-editorial text-2xl tracking-wider font-semibold">ARTISAN LUXE</span>
-            <span class="block text-[10px] tracking-widest text-gray-400 uppercase font-mono">Simulated Enterprise Storefront</span>
+            <span class="block text-[10px] tracking-widest text-gray-400 uppercase font-mono">Heritage Crafts & Gourmet Goods</span>
           </div>
         </div>
 
-        <!-- Center Nav & DPDP Compliance Badge -->
+        <!-- Center Nav -->
         <div class="hidden md:flex items-center space-x-6">
           <a href="/" class="text-sm text-gray-300 hover:text-white transition font-medium">Storefront</a>
-          <a href="/privacy" class="text-sm text-gray-300 hover:text-white transition font-medium flex items-center gap-1.5 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
-            <i data-lucide="shield-check" class="w-4 h-4 text-aloe"></i>
-            <span>Privacy & Consent Center</span>
+          <a href="#collection" class="text-sm text-gray-300 hover:text-white transition font-medium">Collections</a>
+          <a href="/privacy" class="text-sm text-gray-300 hover:text-white transition font-medium flex items-center gap-1.5 hover:bg-white/5 px-3 py-1.5 rounded-full transition">
+            <i data-lucide="shield" class="w-4 h-4 text-aloe"></i>
+            <span>Privacy & Preferences</span>
           </a>
-          <button onclick="openTestBenchModal()" class="text-sm text-emerald-400 hover:text-emerald-300 transition font-mono flex items-center gap-1.5 bg-emerald-950/40 px-3 py-1.5 rounded-full border border-emerald-500/30">
-            <i data-lucide="zap" class="w-4 h-4"></i>
-            <span>DPDP Live Test Bench</span>
-          </button>
         </div>
 
         <!-- Right: Auth & Cart -->
@@ -80,16 +77,12 @@
       </div>
 
       <!-- Hero Statement -->
-      <div class="py-16 sm:py-20 text-center max-w-3xl mx-auto">
-        <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-mono text-gray-300 mb-6">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          <span>ISO/IEC 27001 & DPDP Act 2025 Architecture</span>
-        </div>
+      <div class="py-16 sm:py-24 text-center max-w-3xl mx-auto">
         <h1 class="font-editorial text-4xl sm:text-6xl font-normal tracking-tight text-white leading-tight">
-          Handcrafted Heritage. <br><span class="italic font-light text-gray-300">Statutory Privacy by Design.</span>
+          Handcrafted Heritage. <br><span class="italic font-light text-gray-300">Timeless Elegance.</span>
         </h1>
         <p class="mt-4 text-sm sm:text-base text-gray-400 max-w-xl mx-auto font-light leading-relaxed">
-          Experience authentic luxury artisanal goods from master weavers and organic estates across India, protected by zero-knowledge in-VPC DPDP consent management.
+          Discover authentic luxury artisanal goods, single-estate gourmet teas, and handcrafted textiles from master artisans across India.
         </p>
       </div>
     </div>
@@ -296,55 +289,7 @@
   </div>
 
   <!-- ===================================================================== -->
-  <!-- 5. LIVE DPDP PROMOTIONAL CAMPAIGN TEST BENCH MODAL                   -->
-  <!-- ===================================================================== -->
-  <div id="testBenchModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden">
-    <div class="bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-gray-100 animate-in fade-in zoom-in-95 duration-200">
-      <div class="px-6 py-5 bg-charcoal text-white flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400">
-            <i data-lucide="zap" class="w-4 h-4"></i>
-          </div>
-          <div>
-            <h3 class="font-editorial text-xl font-semibold">DPDP Real-Time Enforcement Bench</h3>
-            <p class="text-[11px] font-mono text-gray-400">In-VPC Zone Agent Gating Simulator (&lt;1ms check)</p>
-          </div>
-        </div>
-        <button onclick="closeTestBenchModal()" class="p-1 text-gray-400 hover:text-white rounded-full">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
-      </div>
-
-      <div class="p-6 space-y-5">
-        <div class="text-xs text-gray-600 leading-relaxed">
-          This live workbench simulates an automated promotional campaign dispatch. Before sending any marketing SMS/Email, the application queries the local <strong>In-VPC Zone Agent hot-path cache</strong>. If consent is revoked in the Privacy Center, the dispatch is instantly rejected!
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Target Customer Identifier</label>
-          <input type="email" id="testBenchEmail" value="rohit.sharma@example.com" class="w-full px-3.5 py-2 text-sm rounded-lg border border-gray-300 font-mono outline-none">
-        </div>
-
-        <div>
-          <label class="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">Promotional SMS Payload</label>
-          <textarea id="testBenchMessage" rows="2" class="w-full px-3.5 py-2 text-sm rounded-lg border border-gray-300 outline-none text-gray-700">🌟 Exclusive 25% festive discount on Artisanal Kashmiri Pashmina Shawls for our valued patrons!</textarea>
-        </div>
-
-        <button onclick="dispatchPromoTest()" id="testBenchDispatchBtn" class="w-full py-3 px-4 rounded-full bg-emerald-700 text-white font-medium text-sm hover:bg-emerald-800 transition flex items-center justify-center gap-2">
-          <i data-lucide="send" class="w-4 h-4"></i>
-          <span>Execute Gated Campaign Dispatch</span>
-        </button>
-
-        <!-- Result Box -->
-        <div id="testBenchResult" class="p-4 rounded-xl bg-paper border border-gray-200 text-xs font-mono space-y-2 hidden">
-          <!-- Populated by app.js -->
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===================================================================== -->
-  <!-- 6. FOOTER                                                             -->
+  <!-- 5. FOOTER                                                             -->
   <!-- ===================================================================== -->
   <footer class="bg-charcoal text-gray-400 border-t border-white/10 py-12">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
@@ -354,13 +299,13 @@
       </div>
 
       <div class="flex items-center space-x-6 text-xs">
-        <a href="/privacy" class="hover:text-aloe transition font-medium">Customer Privacy & Consent Center</a>
-        <a href="/privacy" class="hover:text-aloe transition font-medium">DPDP Act §12 Erasure Rights</a>
-        <a href="/privacy" class="hover:text-aloe transition font-medium">Notice & Data Map</a>
+        <a href="#collection" class="hover:text-aloe transition font-medium">Collections</a>
+        <a href="/privacy" class="hover:text-aloe transition font-medium">Privacy Policy</a>
+        <a href="/privacy" class="hover:text-aloe transition font-medium">Privacy Preferences & Rights</a>
       </div>
 
       <div class="text-[11px] font-mono text-gray-500">
-        © 2026 Simulated Enterprise Inc. All rights reserved.
+        © 2026 Artisan Luxe Enterprises. All rights reserved.
       </div>
     </div>
   </footer>

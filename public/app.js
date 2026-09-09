@@ -39,15 +39,11 @@ function loadStoredSession() {
     } catch {
       localStorage.removeItem('ecom_token');
       localStorage.removeItem('ecom_user');
+      currentUser = null;
+      renderAuthHeader();
     }
   } else {
-    // Default demo user profile for smooth exploration
-    currentUser = {
-      id: 'usr-mumbai-101',
-      fullName: 'Rohit Sharma',
-      email: 'rohit.sharma@example.com',
-      phone: '+919820123456',
-    };
+    currentUser = null;
     renderAuthHeader();
   }
 }
@@ -549,89 +545,5 @@ async function restoreAccount() {
 
     alert('🎉 Account Restored Successfully to ACTIVE status!');
     await initPrivacyCenter();
-  } catch (err) {
-    alert(`Account restore failed: ${err.message}`);
-  }
 }
 
-// ----------------------------------------------------------------------------
-// 5. Live DPDP Promotional Campaign & Enforcement Test Bench
-// ----------------------------------------------------------------------------
-function openTestBenchModal() {
-  const modal = document.getElementById('testBenchModal');
-  if (modal) {
-    const emailInput = document.getElementById('testBenchEmail');
-    if (emailInput && currentUser) {
-      emailInput.value = currentUser.email;
-    }
-    modal.classList.remove('hidden');
-  }
-}
-
-function closeTestBenchModal() {
-  const modal = document.getElementById('testBenchModal');
-  if (modal) modal.classList.add('hidden');
-}
-
-async function dispatchPromoTest() {
-  const email = document.getElementById('testBenchEmail')?.value.trim();
-  const msg = document.getElementById('testBenchMessage')?.value.trim();
-  const resultBox = document.getElementById('testBenchResult');
-  const btn = document.getElementById('testBenchDispatchBtn');
-
-  if (!email) return;
-
-  btn.disabled = true;
-  btn.textContent = 'Checking In-VPC Zone Agent Consent...';
-
-  try {
-    const res = await fetch('/api/marketing/dispatch-promo', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recipientEmail: email, promoMessage: msg }),
-    });
-
-    const data = await res.json();
-    resultBox.classList.remove('hidden');
-
-    if (res.ok) {
-      resultBox.className = 'p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-mono space-y-1.5 text-emerald-900';
-      resultBox.innerHTML = `
-        <div class="flex items-center gap-2 font-bold text-emerald-800">
-          <i data-lucide="check-circle-2" class="w-4 h-4 text-emerald-600"></i>
-          <span>DISPATCH PERMITTED (200 OK)</span>
-        </div>
-        <div class="text-[11px] text-emerald-700">
-          • Principal: ${data.recipient}<br>
-          • Check Latency: ${data.complianceCheck.latencyMs} ms (&lt;1ms in-VPC cache)<br>
-          • Verified By: ${data.complianceCheck.enforcedBy}<br>
-          • Statutory Status: VERIFIED_ACTIVE_CONSENT (DPDP §6)
-        </div>
-      `;
-    } else {
-      resultBox.className = 'p-4 rounded-xl bg-red-50 border border-red-200 text-xs font-mono space-y-1.5 text-red-900';
-      resultBox.innerHTML = `
-        <div class="flex items-center gap-2 font-bold text-red-800">
-          <i data-lucide="shield-alert" class="w-4 h-4 text-red-600"></i>
-          <span>DISPATCH BLOCKED BY DPDP ENFORCEMENT (403 FORBIDDEN)</span>
-        </div>
-        <div class="text-[11px] text-red-700">
-          • Principal: ${email}<br>
-          • Statutory Clause: ${data.statutoryClause}<br>
-          • Reason: ${data.message}<br>
-          • Gated At: In-VPC Edge Agent Cache (${data.latencyMs} ms)
-        </div>
-      `;
-    }
-
-    if (window.lucide) window.lucide.createIcons();
-  } catch (err) {
-    resultBox.classList.remove('hidden');
-    resultBox.className = 'p-4 rounded-xl bg-gray-50 border border-gray-200 text-xs font-mono text-gray-700';
-    resultBox.textContent = `Error executing test: ${err.message}`;
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i data-lucide="send" class="w-4 h-4"></i><span>Execute Gated Campaign Dispatch</span>';
-    if (window.lucide) window.lucide.createIcons();
-  }
-}

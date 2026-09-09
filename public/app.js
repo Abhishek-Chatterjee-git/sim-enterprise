@@ -155,7 +155,7 @@ function openAuthModal(mode = 'signup') {
   const modal = document.getElementById('authModal');
   const title = document.getElementById('authModalTitle');
   const subtitle = document.getElementById('authModalSubtitle');
-  const signupFields = document.getElementById('signupFields');
+  const signupOnlyFields = document.getElementById('signupOnlyFields') || document.getElementById('signupFields');
   const submitBtn = document.getElementById('authSubmitBtn');
   const togglePrompt = document.getElementById('authTogglePrompt');
   const toggleBtn = document.getElementById('authToggleBtn');
@@ -166,14 +166,14 @@ function openAuthModal(mode = 'signup') {
   if (mode === 'signup') {
     if (title) title.textContent = 'Customer Registration';
     if (subtitle) subtitle.textContent = 'Create your personal account';
-    if (signupFields) signupFields.classList.remove('hidden');
+    if (signupOnlyFields) signupOnlyFields.classList.remove('hidden');
     if (submitBtn) submitBtn.textContent = 'Complete Registration & Sign In';
-    if (togglePrompt) togglePrompt.textContent = 'Already registered?';
+    if (togglePrompt) togglePrompt.textContent = 'Already have an account?';
     if (toggleBtn) toggleBtn.textContent = 'Sign In';
   } else {
     if (title) title.textContent = 'Customer Sign In';
-    if (subtitle) subtitle.textContent = 'Sign in to access your orders and preferences';
-    if (signupFields) signupFields.classList.add('hidden');
+    if (subtitle) subtitle.textContent = 'Enter your email and password to access your account';
+    if (signupOnlyFields) signupOnlyFields.classList.add('hidden');
     if (submitBtn) submitBtn.textContent = 'Sign In';
     if (togglePrompt) togglePrompt.textContent = "Don't have an account?";
     if (toggleBtn) toggleBtn.textContent = 'Register';

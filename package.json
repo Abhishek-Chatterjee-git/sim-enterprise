@@ -1,22 +1,23 @@
 {
-  "name": "sim-enterprise",
+  "name": "@dpdp/ecom-app",
   "version": "1.0.0",
   "type": "module",
-  "description": "Simulated Enterprise E-Commerce Platform & Admin Portal with DPDP Act Consent Integration",
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "start": "node dist/index.js",
+    "start:web": "node dist/server.js",
+    "start:worker": "node dist/agent-worker.js",
+    "start:admin": "node dist/admin-server.js",
     "dev": "tsx src/index.ts",
-    "start": "tsx src/index.ts",
-    "test": "node --experimental-sqlite --import tsx src/test.ts",
-    "seed:sql": "echo Pipe scripts/seed_data.sql into PostgreSQL"
+    "test": "tsx src/test.ts"
   },
   "dependencies": {
+    "@dpdp/shared": "^1.0.0",
     "pg": "^8.11.3"
   },
   "devDependencies": {
-    "@types/node": "^20.11.24",
+    "@types/node": "^20.11.0",
     "@types/pg": "^8.11.0",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3"

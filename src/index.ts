@@ -1,56 +1,74 @@
-import { pathToFileURL } from 'node:url';
 import { EnterpriseDatabase } from './db.js';
 import { EcomServer } from './server.js';
-import { AdminPortalServer } from './admin-server.js';
+import { ZoneAgentWorker } from './agent-worker.js';
+import { AdminServer } from './admin-server.js';
+import { ComplianceSaasClient } from './saas-client.js';
+import { loadEnterpriseConfig } from './config.js';
 
-export { EnterpriseDatabase } from './db.js';
-export { EcomServer } from './server.js';
-export { AdminPortalServer } from './admin-server.js';
-export { CustomerAuthService } from './auth.js';
+export {
+  EnterpriseDatabase,
+  EcomServer,
+  ZoneAgentWorker,
+  AdminServer,
+  ComplianceSaasClient,
+  loadEnterpriseConfig,
+};
 
 async function main() {
-  const db = new EnterpriseDatabase();
-  const appMode = (process.env.APP_MODE || 'all').toLowerCase();
-  const ecomPort = parseInt(process.env.ECOM_PORT || '3000', 10);
-  const adminPort = parseInt(process.env.ADMIN_PORT || '3001', 10);
+  const config = loadEnterpriseConfig();
+  const db = new EnterpriseDatabase(config.dbConnectionString);
+  await db.init();
 
-  let ecomServer: EcomServer | null = null;
-  let adminServer: AdminPortalServer | null = null;
+  console.log(`
+================================================================================
+  🏛️  SIMULATED ENTERPRISE PLATFORM (DPDP ACT 2025 & ISO 27001 READY)
+  Mode: ${config.appMode.toUpperCase()} | Database: ${config.dbType}
+================================================================================
+`);
 
-  console.log('===============================================================');
-  console.log(`🌐 Enterprise App Deployment Mode: ${appMode.toUpperCase()}`);
+  if (config.appMode === 'worker') {
+    const worker = new ZoneAgentWorker(config, db);
+    await worker.start();
+  } else if (config.appMode === 'admin') {
+    const admin = new AdminServer(config, db);
+    await admin.start();
+  } else if (config.appMode === 'storefront') {
+    const ecom = new EcomServer({ config }, db);
+    await ecom.start();
+  } else {
+    // Mode 'all': run Storefront + Zone Agent + Admin together
+    const worker = new ZoneAgentWorker(config, db);
+    await worker.start();
 
-  if (appMode === 'storefront' || appMode === 'all') {
-    ecomServer = new EcomServer({ port: ecomPort }, db);
-    await ecomServer.start();
-    console.log(`🛍️ Customer Storefront (DMZ) : http://0.0.0.0:${ecomPort}`);
+    const ecom = new EcomServer({ config }, db);
+    await ecom.start();
+
+    const admin = new AdminServer(config, db);
+    await admin.start();
+
+    console.log(`
+  🛍️  Storefront: http://localhost:${config.port}
+  🔒  Privacy Center: http://localhost:${config.port}/privacy
+  🛡️  Zone Agent Daemon: http://localhost:${config.agentPort}
+  📊  Admin Portal: http://localhost:${config.adminPort}
+  ☁️  Compliance SaaS: ${config.controlPlaneUrl}
+================================================================================
+`);
   }
-
-  if (appMode === 'admin' || appMode === 'all') {
-    adminServer = new AdminPortalServer(adminPort, db);
-    await adminServer.start();
-    console.log(`🔒 Enterprise Admin Portal (Employee Net): http://0.0.0.0:${adminPort}`);
-  }
-  console.log('===============================================================');
 
   // Graceful shutdown
-  process.on('SIGINT', async () => {
-    console.log('\nStopping servers...');
-    if (ecomServer) await ecomServer.stop();
-    if (adminServer) await adminServer.stop();
+  const shutdown = async () => {
+    console.log('\nShutting down enterprise services...');
+    await db.close();
     process.exit(0);
-  });
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }
 
-// Robust execution check across Windows, macOS, Linux
-if (
-  process.argv[1] &&
-  (import.meta.url === pathToFileURL(process.argv[1]).href ||
-   process.argv[1].replace(/\\/g, '/').endsWith('src/index.ts') ||
-   process.argv[1].replace(/\\/g, '/').endsWith('dist/index.js'))
-) {
+if (process.argv[1] && (process.argv[1].endsWith('index.js') || process.argv[1].endsWith('index.ts'))) {
   main().catch((err) => {
-    console.error('Fatal startup error:', err);
+    console.error('Fatal Enterprise Startup Error:', err);
     process.exit(1);
   });
 }

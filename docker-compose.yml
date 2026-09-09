@@ -1,22 +1,71 @@
-services:
-  ecom-storefront:
-    build: .
-    container_name: ecom-storefront
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      - APP_MODE=storefront
-      - ECOM_PORT=3000
-      - DB_CONNECTION_STRING=postgres://app_user:SecurePass2025@10.10.2.3:5432/enterprise_ecom
+version: '3.8'
 
-  ecom-admin:
-    build: .
-    container_name: ecom-admin
+services:
+  # 1. Enterprise PostgreSQL Database
+  enterprise-db:
+    image: postgres:16-alpine
+    container_name: enterprise-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=app_user
+      - POSTGRES_PASSWORD=SecurePass2026!
+      - POSTGRES_DB=enterprise_db
+    volumes:
+      - enterprise_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app_user -d enterprise_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Storefront Web Service & Privacy Portal
+  enterprise-storefront:
+    build:
+      context: ../..
+      dockerfile: sim-enterprise/ecom-app/Dockerfile
+    container_name: enterprise-storefront
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      - APP_MODE=admin
-      - ADMIN_PORT=3000
-      - DB_CONNECTION_STRING=postgres://app_user:SecurePass2025@10.10.2.3:5432/enterprise_ecom
+      - NODE_ENV=production
+      - APP_MODE=storefront
+      - PORT=3000
+      - AGENT_PORT=5000
+      - DB_TYPE=POSTGRES
+      - DATABASE_URL=postgres://app_user:SecurePass2026!@enterprise-db:5432/enterprise_db
+      - CONTROL_PLANE_URL=http://control-plane:8080
+      - ORGANIZATION_SLUG=artisan-luxe-enterprise
+    depends_on:
+      enterprise-db:
+        condition: service_healthy
+
+  # 3. In-VPC Zone Agent Background Worker
+  enterprise-zone-agent:
+    build:
+      context: ../..
+      dockerfile: sim-enterprise/ecom-app/Dockerfile
+    container_name: enterprise-zone-agent
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=production
+      - APP_MODE=worker
+      - AGENT_PORT=5000
+      - AGENT_ID=agent-docker-mumbai-01
+      - AGENT_NAME=Docker-VPC-Zone-Agent
+      - DB_TYPE=POSTGRES
+      - DATABASE_URL=postgres://app_user:SecurePass2026!@enterprise-db:5432/enterprise_db
+      - CONTROL_PLANE_URL=http://control-plane:8080
+      - ORGANIZATION_SLUG=artisan-luxe-enterprise
+      - HEARTBEAT_INTERVAL_MS=5000
+      - DDL_CHECK_INTERVAL_MS=15000
+    depends_on:
+      enterprise-db:
+        condition: service_healthy
+
+volumes:
+  enterprise_pgdata:

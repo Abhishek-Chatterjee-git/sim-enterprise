@@ -1,6 +1,6 @@
 /**
  * Client-Side Application for ARTISAN LUXE Simulated Enterprise
- * Handles Product Catalog, Cart, Onboarding, Privacy Center, and Live DPDP Enforcement
+ * Handles Product Catalog, Cart, Onboarding, Privacy Center, and Consent Management
  */
 
 // State
@@ -10,7 +10,81 @@ let allProducts = [];
 let selectedCategory = 'ALL';
 let authMode = 'signup'; // 'signup' | 'login'
 
-// Init
+// ----------------------------------------------------------------------------
+// Curated Luxury Indian Artisanal Reserve Catalog
+// ----------------------------------------------------------------------------
+const defaultProducts = [
+  {
+    id: 'prod-01',
+    name: 'Handcrafted Kashmiri Pashmina Shawl',
+    sku: 'LUXE-KASH-001',
+    category: 'Heritage Textiles',
+    price: 18500,
+    rating: 4.9,
+    image: 'https://images.unsplash.com/photo-1606760227091-3dd870d97f1d?w=800&auto=format&fit=crop&q=80',
+    stock: 15,
+    description: 'Authentic 100% Changthangi goat wool hand-spun in Srinagar. Pure luxury and timeless elegance.',
+  },
+  {
+    id: 'prod-02',
+    name: 'Organic Darjeeling First Flush (Estate Reserve)',
+    sku: 'GOUR-DARJ-002',
+    category: 'Gourmet Teas',
+    price: 2400,
+    rating: 4.8,
+    image: 'https://images.unsplash.com/photo-1576092768241-dec231879fc3?w=800&auto=format&fit=crop&q=80',
+    stock: 60,
+    description: 'Single-estate loose leaf tea harvested at dawn from the misty Himalayan foothills of Darjeeling.',
+  },
+  {
+    id: 'prod-03',
+    name: 'Pure Mysore Sandalwood Essential Extract (50ml)',
+    sku: 'WELL-SAND-003',
+    category: 'Ayurvedic Wellness',
+    price: 5200,
+    rating: 5.0,
+    image: 'https://images.unsplash.com/photo-1608571423902-eed4a5ad8108?w=800&auto=format&fit=crop&q=80',
+    stock: 30,
+    description: 'Steam-distilled from mature Santalum album heartwood. Deeply grounding therapeutic aroma.',
+  },
+  {
+    id: 'prod-04',
+    name: 'Jaipur Hand-Painted Cobalt Blue Pottery Vase',
+    sku: 'DECO-JAIP-004',
+    category: 'Artisan Decor',
+    price: 3800,
+    rating: 4.7,
+    image: 'https://images.unsplash.com/photo-1578749556568-bc2c40e68b61?w=800&auto=format&fit=crop&q=80',
+    stock: 22,
+    description: 'Crafted using quartz stone and natural copper oxide pigments by master craftsmen in Jaipur.',
+  },
+  {
+    id: 'prod-05',
+    name: 'Heritage Brass Mayur Hanging Diya (Set of 2)',
+    sku: 'DECO-DIYA-005',
+    category: 'Artisan Decor',
+    price: 4600,
+    rating: 4.9,
+    image: 'https://images.unsplash.com/photo-1605371924599-2d0365da1ae0?w=800&auto=format&fit=crop&q=80',
+    stock: 18,
+    description: 'Lost-wax cast solid brass peacock lamps crafted in Thanjavur. Traditional handcrafted finish.',
+  },
+  {
+    id: 'prod-06',
+    name: 'Raw Single-Origin Malabar Forest Honey (500g)',
+    sku: 'GOUR-HONY-006',
+    category: 'Gourmet Teas',
+    price: 1250,
+    rating: 4.8,
+    image: 'https://images.unsplash.com/photo-1587049352846-4a222e784d38?w=800&auto=format&fit=crop&q=80',
+    stock: 45,
+    description: 'Wild-harvested, unpasteurized forest honey from the Nilgiri biosphere reserve.',
+  },
+];
+
+// ----------------------------------------------------------------------------
+// Initialization
+// ----------------------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', async () => {
   if (window.lucide) {
     window.lucide.createIcons();
@@ -90,22 +164,22 @@ function openAuthModal(mode = 'signup') {
   if (errorMsg) errorMsg.classList.add('hidden');
 
   if (mode === 'signup') {
-    title.textContent = 'Customer Registration';
-    subtitle.textContent = 'DPDP Act 2025 Compliant Onboarding';
-    signupFields.classList.remove('hidden');
-    submitBtn.textContent = 'Complete Registration & Sign In';
-    togglePrompt.textContent = 'Already registered?';
-    toggleBtn.textContent = 'Sign In';
+    if (title) title.textContent = 'Customer Registration';
+    if (subtitle) subtitle.textContent = 'Create your personal account';
+    if (signupFields) signupFields.classList.remove('hidden');
+    if (submitBtn) submitBtn.textContent = 'Complete Registration & Sign In';
+    if (togglePrompt) togglePrompt.textContent = 'Already registered?';
+    if (toggleBtn) toggleBtn.textContent = 'Sign In';
   } else {
-    title.textContent = 'Customer Sign In';
-    subtitle.textContent = 'Access your account & privacy center';
-    signupFields.classList.add('hidden');
-    submitBtn.textContent = 'Sign In';
-    togglePrompt.textContent = "Don't have an account?";
-    toggleBtn.textContent = 'Register';
+    if (title) title.textContent = 'Customer Sign In';
+    if (subtitle) subtitle.textContent = 'Sign in to access your orders and preferences';
+    if (signupFields) signupFields.classList.add('hidden');
+    if (submitBtn) submitBtn.textContent = 'Sign In';
+    if (togglePrompt) togglePrompt.textContent = "Don't have an account?";
+    if (toggleBtn) toggleBtn.textContent = 'Register';
   }
 
-  modal.classList.remove('hidden');
+  if (modal) modal.classList.remove('hidden');
 }
 
 function closeAuthModal() {
@@ -126,8 +200,10 @@ async function handleAuthSubmit(e) {
   const email = document.getElementById('authEmail')?.value.trim();
   const password = document.getElementById('authPassword')?.value;
 
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Processing...';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Processing...';
+  }
 
   try {
     if (authMode === 'signup') {
@@ -182,8 +258,10 @@ async function handleAuthSubmit(e) {
       errorMsg.classList.remove('hidden');
     }
   } finally {
-    submitBtn.disabled = false;
-    submitBtn.textContent = authMode === 'signup' ? 'Complete Registration & Sign In' : 'Sign In';
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = authMode === 'signup' ? 'Complete Registration & Sign In' : 'Sign In';
+    }
   }
 }
 
@@ -204,13 +282,21 @@ async function loadProducts() {
   const grid = document.getElementById('productGrid');
   if (!grid) return;
 
+  // Immediate render from default catalog so UI is never blank
+  allProducts = [...defaultProducts];
+  renderProductGrid();
+
   try {
     const res = await fetch('/api/products');
-    const data = await res.json();
-    allProducts = data.products || [];
-    renderProductGrid();
+    if (res.ok) {
+      const data = await res.json();
+      if (data.products && Array.isArray(data.products) && data.products.length > 0) {
+        allProducts = data.products;
+        renderProductGrid();
+      }
+    }
   } catch (err) {
-    console.error('Failed to load products:', err);
+    console.warn('Backend products endpoint unreachable, using reserve catalog:', err);
   }
 }
 
@@ -248,18 +334,21 @@ function renderProductGrid() {
       <!-- Details -->
       <div class="p-6 flex flex-col flex-grow justify-between space-y-4">
         <div>
-          <h3 class="font-editorial text-lg font-semibold text-charcoal group-hover:text-emerald-900 transition leading-snug">${p.name}</h3>
-          <p class="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">${p.description}</p>
+          <div class="flex items-center justify-between text-xs text-gray-400 font-mono mb-1">
+            <span>SKU: ${p.sku}</span>
+            <span class="${p.stock < 20 ? 'text-amber-600 font-bold' : 'text-emerald-600'}">${p.stock} in stock</span>
+          </div>
+          <h3 class="font-editorial text-xl font-bold text-charcoal group-hover:text-emerald-800 transition">${p.name}</h3>
+          <p class="text-xs text-gray-500 mt-2 line-clamp-2 leading-relaxed">${p.description}</p>
         </div>
 
-        <div class="flex items-center justify-between pt-2 border-t border-gray-100">
+        <div class="pt-4 border-t border-gray-100 flex items-center justify-between">
           <div>
-            <span class="text-[10px] text-gray-400 block font-mono">Price (Incl. GST)</span>
-            <span class="font-editorial text-xl font-bold text-charcoal">₹${Number(p.price).toLocaleString('en-IN')}</span>
+            <span class="text-[10px] text-gray-400 uppercase tracking-widest block font-mono">Price (Incl. Tax)</span>
+            <span class="font-editorial text-2xl font-bold text-charcoal">₹${Number(p.price).toLocaleString('en-IN')}</span>
           </div>
-
-          <button onclick="addToCart('${p.id}')" class="px-4 py-2 rounded-full bg-charcoal text-white text-xs font-medium hover:bg-emerald-900 transition flex items-center gap-1.5 shadow-sm">
-            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+          <button onclick="addToCart('${p.id}')" class="px-5 py-2.5 rounded-full bg-charcoal text-white hover:bg-black font-medium text-xs flex items-center gap-2 transition active:scale-95 shadow-sm">
+            <i data-lucide="plus" class="w-4 h-4"></i>
             <span>Add to Bag</span>
           </button>
         </div>
@@ -272,10 +361,11 @@ function renderProductGrid() {
   }
 }
 
-function filterCategory(cat) {
-  selectedCategory = cat;
-  document.querySelectorAll('.category-pill').forEach((btn) => {
-    if (btn.textContent.trim().toLowerCase().includes(cat.toLowerCase()) || (cat === 'ALL' && btn.textContent.includes('All'))) {
+function filterCategory(category) {
+  selectedCategory = category;
+  const pills = document.querySelectorAll('.category-pill');
+  pills.forEach((btn) => {
+    if (btn.textContent.trim().toLowerCase().includes(category.toLowerCase()) || (category === 'ALL' && btn.textContent.includes('All'))) {
       btn.className = 'category-pill px-4 py-1.5 rounded-full text-xs font-medium bg-charcoal text-white transition';
     } else {
       btn.className = 'category-pill px-4 py-1.5 rounded-full text-xs font-medium bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 transition';
@@ -380,9 +470,9 @@ async function executeCheckout() {
         Authorization: token ? `Bearer ${token}` : '',
       },
       body: JSON.stringify({
-        userId: currentUser?.id || 'usr-mumbai-101',
+        userId: currentUser?.id || 'usr-guest',
         items,
-        shippingAddress: 'Flat 14B, Sea Breeze Apartments, Worli Sea Face, Mumbai 400018',
+        shippingAddress: currentUser?.address || '12 MG Road, Mumbai, Maharashtra 400018',
         paymentMethod: 'UPI (Razorpay Gateway)',
       }),
     });
@@ -394,7 +484,7 @@ async function executeCheckout() {
     updateCartUI();
     toggleCartDrawer(false);
 
-    alert(`🎉 Order Placed Successfully!\nOrder Number: ${data.orderNumber}\nAmount: ₹${data.totalAmount.toLocaleString('en-IN')}\n\nStatutory DPDP Tax Invoice recorded.`);
+    alert(`🎉 Order Placed Successfully!\nOrder Number: ${data.orderNumber}\nAmount: ₹${Number(data.totalAmount).toLocaleString('en-IN')}\n\nA confirmation has been sent to your registered email.`);
   } catch (err) {
     alert(`Order placement error: ${err.message}`);
   }
@@ -413,7 +503,19 @@ async function initPrivacyCenter() {
   const toggleAnl = document.getElementById('toggleAnalytics');
 
   const token = localStorage.getItem('ecom_token');
-  const email = currentUser?.email || 'rohit.sharma@example.com';
+
+  if (!currentUser && !token) {
+    if (userEmailEl) userEmailEl.textContent = 'Guest Session';
+    if (statusBadge) {
+      statusBadge.textContent = 'NOT SIGNED IN';
+      statusBadge.className = 'inline-block mt-2 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-700';
+    }
+    if (toggleMkt) toggleMkt.disabled = true;
+    if (toggleAnl) toggleAnl.disabled = true;
+    return;
+  }
+
+  const email = currentUser?.email || 'Customer Account';
   if (userEmailEl) userEmailEl.textContent = email;
 
   try {
@@ -430,7 +532,7 @@ async function initPrivacyCenter() {
       if (quarantineBanner) quarantineBanner.classList.remove('hidden');
     } else {
       if (statusBadge) {
-        statusBadge.textContent = 'ACTIVE PRINCIPAL';
+        statusBadge.textContent = 'ACTIVE ACCOUNT';
         statusBadge.className = 'inline-block mt-2 text-[10px] font-bold font-mono px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800';
       }
       if (quarantineBanner) quarantineBanner.classList.add('hidden');
@@ -440,8 +542,14 @@ async function initPrivacyCenter() {
     const mktConsent = data.consents?.find((c) => c.purposeId === 'marketing')?.isGranted ?? true;
     const anlConsent = data.consents?.find((c) => c.purposeId === 'analytics')?.isGranted ?? true;
 
-    if (toggleMkt) toggleMkt.checked = mktConsent;
-    if (toggleAnl) toggleAnl.checked = anlConsent;
+    if (toggleMkt) {
+      toggleMkt.disabled = false;
+      toggleMkt.checked = mktConsent;
+    }
+    if (toggleAnl) {
+      toggleAnl.disabled = false;
+      toggleAnl.checked = anlConsent;
+    }
 
     if (marketingPill) {
       marketingPill.textContent = mktConsent ? 'Consent Active' : 'Consent Revoked';
@@ -463,6 +571,11 @@ async function initPrivacyCenter() {
 
 async function handleConsentToggle(purposeId, isGranted) {
   const token = localStorage.getItem('ecom_token');
+  if (!currentUser && !token) {
+    openAuthModal('login');
+    return;
+  }
+
   const pill = document.getElementById(`${purposeId}StatusPill`);
 
   if (pill) {
@@ -496,6 +609,11 @@ async function handleConsentToggle(purposeId, isGranted) {
 }
 
 function promptErasureModal() {
+  const token = localStorage.getItem('ecom_token');
+  if (!currentUser && !token) {
+    openAuthModal('login');
+    return;
+  }
   const modal = document.getElementById('erasureModal');
   if (modal) modal.classList.remove('hidden');
 }
@@ -508,6 +626,10 @@ function closeErasureModal() {
 async function executeAccountErasure() {
   closeErasureModal();
   const token = localStorage.getItem('ecom_token');
+  if (!currentUser && !token) {
+    openAuthModal('login');
+    return;
+  }
 
   try {
     const res = await fetch('/api/privacy/dsr/erasure', {
@@ -517,15 +639,15 @@ async function executeAccountErasure() {
         Authorization: token ? `Bearer ${token}` : '',
       },
       body: JSON.stringify({
-        userId: currentUser?.id || 'usr-mumbai-101',
-        reason: 'Customer initiated DPDP Act 2025 §12 Right to Erasure',
+        userId: currentUser?.id,
+        reason: 'Customer initiated Right to Erasure request',
       }),
     });
 
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erasure request failed');
 
-    alert(`🛡️ DPDP Right to Erasure Scheduled!\n${data.message}`);
+    alert(`🛡️ Right to Erasure Scheduled!\n${data.message}`);
     await initPrivacyCenter();
   } catch (err) {
     alert(`Erasure failed: ${err.message}`);
@@ -537,7 +659,7 @@ async function restoreAccount() {
     const res = await fetch('/api/privacy/dsr/reactivate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: currentUser?.email || 'rohit.sharma@example.com' }),
+      body: JSON.stringify({ email: currentUser?.email }),
     });
 
     const data = await res.json();
@@ -545,5 +667,7 @@ async function restoreAccount() {
 
     alert('🎉 Account Restored Successfully to ACTIVE status!');
     await initPrivacyCenter();
+  } catch (err) {
+    alert(`Restoration failed: ${err.message}`);
+  }
 }
-

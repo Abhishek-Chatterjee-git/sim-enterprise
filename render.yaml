@@ -1,8 +1,8 @@
 # Render Blueprint Deployment Configuration
+# Pure Enterprise E-Commerce Platform
 # Deploys:
 # 1. PostgreSQL Database (enterprise_db)
-# 2. Storefront Web Service (ARTISAN LUXE E-Commerce & Privacy Portal)
-# 3. In-VPC Zone Agent Background Worker (Local Discovery & DSR Erasure Executor)
+# 2. Storefront Web Service (ARTISAN LUXE E-Commerce Store & Customer Privacy Settings)
 
 databases:
   - name: enterprise-postgres
@@ -13,20 +13,18 @@ databases:
 
 services:
   # ---------------------------------------------------------------------------
-  # 1. E-Commerce Storefront & Customer Privacy Center (Web Service)
+  # 1. Enterprise E-Commerce Storefront & Web Service
   # ---------------------------------------------------------------------------
   - type: web
     name: sim-enterprise-storefront
     env: node
     plan: free
     region: singapore
-    buildCommand: npm ci && npm run build:shared && npm run build:ecom
-    startCommand: npm --workspace=sim-enterprise/ecom-app run start:web
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: APP_MODE
-        value: storefront
       - key: DATABASE_URL
         fromDatabase:
           name: enterprise-postgres
@@ -34,42 +32,8 @@ services:
       - key: DB_TYPE
         value: POSTGRES
       - key: CONTROL_PLANE_URL
-        value: https://dpdp-control-plane.onrender.com # Point to your deployed SaaS Control Plane
+        value: https://api.yourcompliance.com # Public URL of your deployed SaaS Compliance Control Plane
       - key: ORGANIZATION_SLUG
         value: artisan-luxe-enterprise
       - key: SESSION_SECRET
         generateValue: true
-
-  # ---------------------------------------------------------------------------
-  # 2. In-VPC Zone Agent Daemon (Background Worker)
-  # ---------------------------------------------------------------------------
-  - type: worker
-    name: sim-enterprise-zone-agent
-    env: node
-    plan: free
-    region: singapore
-    buildCommand: npm ci && npm run build:shared && npm run build:ecom
-    startCommand: npm --workspace=sim-enterprise/ecom-app run start:worker
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: APP_MODE
-        value: worker
-      - key: DATABASE_URL
-        fromDatabase:
-          name: enterprise-postgres
-          property: connectionString
-      - key: DB_TYPE
-        value: POSTGRES
-      - key: CONTROL_PLANE_URL
-        value: https://dpdp-control-plane.onrender.com
-      - key: ORGANIZATION_SLUG
-        value: artisan-luxe-enterprise
-      - key: AGENT_ID
-        value: agent-render-sg-01
-      - key: AGENT_NAME
-        value: Render-InVPC-Zone-Agent
-      - key: HEARTBEAT_INTERVAL_MS
-        value: "5000"
-      - key: DDL_CHECK_INTERVAL_MS
-        value: "15000"

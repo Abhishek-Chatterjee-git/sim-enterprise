@@ -1,6 +1,8 @@
 import assert from 'node:assert';
 import { EnterpriseDatabase } from './db.js';
 import { EcomServer } from './server.js';
+import { createServer } from 'node:http';
+import { createHash, createHmac } from 'node:crypto';
 
 console.log(`
 ================================================================================
@@ -10,6 +12,38 @@ console.log(`
 
 async function runTests() {
   const TEST_PORT = 3199;
+  process.env.DB_TYPE = 'SQLITE';
+  process.env.COMPLIANCE_API_KEY_ID = 'dpk_0000000000000001';
+  process.env.COMPLIANCE_API_KEY_SECRET = 'local-test-secret';
+  const portalCalls: string[] = [];
+  const mockPortal = createServer(async (req,res) => {
+    let body = ''; for await (const chunk of req) body += chunk;
+    const path = new URL(req.url!, 'http://localhost').pathname;
+    portalCalls.push(path);
+    if (path !== '/api/v1/public/dsr/verify') {
+      const timestamp = req.headers['x-dpdpos-timestamp'];
+      const digest = createHash('sha256').update(body).digest('hex');
+      const expected = createHmac('sha256','local-test-secret')
+        .update(`${timestamp}\nPOST\n${req.url}\n${digest}`).digest('hex');
+      if (req.headers['x-dpdpos-key-id'] !== 'dpk_0000000000000001' || req.headers['x-dpdpos-signature'] !== expected) {
+        res.writeHead(401); res.end(JSON.stringify({success:false,error:'Invalid signature'})); return;
+      }
+    }
+    const payload = JSON.parse(body);
+    let data: object = {status:path.endsWith('/grant') ? 'GRANTED' : 'WITHDRAWN'};
+    if (path.endsWith('/dsr/start')) {
+      assert.strictEqual(payload.requesterEmail,'rohit.sharma@example.com');
+      data = {verificationId:'test-verification',expiresInSeconds:600};
+    }
+    if (path.endsWith('/dsr/verify')) {
+      if (payload.code !== '123456') { res.writeHead(400); res.end(JSON.stringify({error:'Invalid code'})); return; }
+      data = {reference:'test-dsr',status:'OPEN'};
+    }
+    res.writeHead(200,{'Content-Type':'application/json'});
+    res.end(JSON.stringify({success:true,data}));
+  });
+  await new Promise<void>(resolve => mockPortal.listen(0,'127.0.0.1',resolve));
+  const mockPort = (mockPortal.address() as {port:number}).port;
 
   // 1. Test Database & Schema Initialization
   console.log('🔹 [Test 1] Initializing Enterprise Database & Verifying Schema...');
@@ -28,7 +62,7 @@ async function runTests() {
 
   // 2. Test Storefront Web Service Startup & Health
   console.log('\n🔹 [Test 2] Starting E-Commerce Storefront Web Service...');
-  const ecom = new EcomServer({ port: TEST_PORT }, db);
+  const ecom = new EcomServer({ port: TEST_PORT, config:{controlPlaneUrl:`http://127.0.0.1:${mockPort}`} }, db);
   await ecom.start();
 
   const healthRes = await fetch(`http://localhost:${TEST_PORT}/api/health`);
@@ -116,6 +150,9 @@ async function runTests() {
     }),
   });
   assert.strictEqual(revokeRes.status, 200, 'Consent update must return 200');
+  assert.strictEqual((await revokeRes.json() as any).portalSynced,true);
+  const localConsent = await db.get<any>("SELECT is_granted FROM consent_preferences WHERE user_id = $1 AND purpose_id = 'marketing'",['usr-mumbai-101']);
+  assert.strictEqual(Number(localConsent.is_granted),0);
   console.log('   ✅ Customer Consent Successfully Revoked in DB & Webhook Dispatched.');
 
   // 9. Test Authenticated Right to Erasure
@@ -128,10 +165,25 @@ async function runTests() {
     },
     body: JSON.stringify({ reason: 'Customer requested account erasure' }),
   });
-  assert.strictEqual(eraseRes.status, 200, 'Erasure request must return 200');
+  assert.strictEqual(eraseRes.status, 202, 'Erasure request must start verification');
   const eraseData = (await eraseRes.json()) as any;
-  assert.strictEqual(eraseData.status, 'QUARANTINED_PENDING_ERASURE', 'Account must be quarantined');
-  console.log('   ✅ Account Successfully Quarantined for Erasure with 30-Day Grace Period.');
+  assert.strictEqual(eraseData.status, 'VERIFICATION_REQUIRED');
+  assert.strictEqual((await db.get<any>('SELECT status FROM users WHERE id = $1',['usr-mumbai-101'])).status,'ACTIVE',
+    'Starting email verification must not quarantine the customer');
+  const wrongCode = await fetch(`http://localhost:${TEST_PORT}/api/privacy/dsr/verify`,{
+    method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${loginData.token}`},
+    body:JSON.stringify({code:'000000'}),
+  });
+  assert.strictEqual(wrongCode.status,502);
+  assert.strictEqual((await db.get<any>('SELECT status FROM users WHERE id = $1',['usr-mumbai-101'])).status,'ACTIVE');
+  const verified = await fetch(`http://localhost:${TEST_PORT}/api/privacy/dsr/verify`,{
+    method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${loginData.token}`},
+    body:JSON.stringify({code:'123456'}),
+  });
+  assert.strictEqual(verified.status,201);
+  assert.strictEqual((await verified.json() as any).reference,'test-dsr');
+  assert.strictEqual((await db.get<any>('SELECT status FROM users WHERE id = $1',['usr-mumbai-101'])).status,'SOFT_DELETED');
+  console.log('   ✅ Email confirmation required before portal request creation and local quarantine.');
 
   // 10. Test Account Reactivation
   console.log('\n🔹 [Test 10] Restoring Quarantined Account with Valid Password...');
@@ -145,6 +197,10 @@ async function runTests() {
 
   // Cleanup
   await ecom.stop();
+  assert.ok(portalCalls.includes('/api/v1/public/consent/revoke'));
+  assert.ok(portalCalls.includes('/api/v1/public/dsr/start'));
+  assert.ok(portalCalls.includes('/api/v1/public/dsr/verify'));
+  await new Promise<void>(resolve => mockPortal.close(() => resolve()));
   console.log(`
 ================================================================================
   🎉 ALL SECURITY & INTEGRITY TESTS PASSED (100%)!

@@ -1,5 +1,9 @@
 # ARTISAN LUXE — Simulated Enterprise E-Commerce & DPDP In-VPC Zone Agent
 
+For the current web-accessible demo, follow [the Render deployment guide](deploy/render/README.md).
+The root `render.yaml` provisions the storefront, PostgreSQL, and a separate agent worker with persistent storage.
+That guide supersedes the older deployment and local-agent networking instructions below.
+
 An independent, production-ready enterprise e-commerce application with a dedicated **DPDP Act 2025 Customer Privacy Center** and an autonomous **In-VPC Zone Agent Daemon**, designed for direct deployment on **Render**, **Docker**, or **VMs/Kubernetes**.
 
 ---

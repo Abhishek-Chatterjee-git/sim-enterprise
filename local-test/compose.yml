@@ -1,0 +1,50 @@
+name: dfortress-ecommerce-test
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:55432:5432"
+    environment:
+      POSTGRES_USER: ecom_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set the local test database password}
+      POSTGRES_DB: ecommerce_test
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set the storefront database password}
+      DISCOVERY_DB_PASSWORD: ${DISCOVERY_DB_PASSWORD:?Set the discovery password}
+      ERASURE_DB_PASSWORD: ${ERASURE_DB_PASSWORD:?Set the erasure password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-roles.sh:/docker-entrypoint-initdb.d/10-test-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ecom_owner -d ecommerce_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  storefront:
+    build:
+      context: ..
+      dockerfile: local-test/Dockerfile
+    ports:
+      - "127.0.0.1:3300:3000"
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      APP_MODE: storefront
+      DB_TYPE: POSTGRES
+      DATABASE_URL: postgres://ecom_app:${APP_DB_PASSWORD}@postgres:5432/ecommerce_test
+      SESSION_SECRET: ${SESSION_SECRET:?Set the local session secret}
+      CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:-https://d-fortress.digitalfortress.in}
+      ORGANIZATION_ID: ${ORGANIZATION_ID:-}
+      ORGANIZATION_SLUG: ${ORGANIZATION_SLUG:-artison-sons}
+      COMPLIANCE_API_KEY_ID: ${COMPLIANCE_API_KEY_ID:-}
+      COMPLIANCE_API_KEY_SECRET: ${COMPLIANCE_API_KEY_SECRET:-}
+      COMPLIANCE_NOTICE_ID: ${COMPLIANCE_NOTICE_ID:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+volumes:
+  postgres_data:

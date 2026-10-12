@@ -1,219 +1,106 @@
-/**
- * External DPDP Compliance SaaS Client
- * Complete Isolation: Outbound HTTPS public webhook client with zero internal DB coupling.
- */
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 
 export interface SaasConsentRevocationPayload {
-  dataSubjectIdentifier: string; // Customer Email or Phone
+  dataSubjectIdentifier: string;
   purpose?: string;
   reason?: string;
   organizationId?: string;
   organizationSlug?: string;
 }
-
-export interface SaasConsentGrantPayload {
-  dataSubjectIdentifier: string;
-  purpose?: string;
+export interface SaasConsentGrantPayload extends SaasConsentRevocationPayload {
   purposes?: string[];
   noticeId?: string;
-  organizationId?: string;
-  organizationSlug?: string;
 }
-
 export interface SaasDsrRequestPayload {
-  requesterReference: string; // Customer Email or Phone
+  requesterReference: string;
   requestType: 'ERASURE' | 'ACCESS' | 'CORRECTION' | 'PORTABILITY';
   description?: string;
   organizationId?: string;
   organizationSlug?: string;
 }
+export interface SaasResult {
+  success: boolean;
+  data?: any;
+  error?: string;
+}
 
+/** Current public API integration; secrets stay on the storefront server. */
 export class ComplianceSaasClient {
-  private controlPlaneUrl: string;
-  private defaultOrgSlug: string;
-  private defaultOrgId?: string;
-
-  constructor(controlPlaneUrl: string, defaultOrgSlug = 'artisan-luxe-enterprise', defaultOrgId?: string) {
+  constructor(private controlPlaneUrl: string,
+    private defaultOrgSlug = 'artisan-luxe-enterprise',
+    private defaultOrgId?: string,
+    private keyId = process.env.COMPLIANCE_API_KEY_ID,
+    private secret = process.env.COMPLIANCE_API_KEY_SECRET,
+    private noticeId = process.env.COMPLIANCE_NOTICE_ID) {
     this.controlPlaneUrl = controlPlaneUrl.replace(/\/$/, '');
-    this.defaultOrgSlug = defaultOrgSlug;
-    this.defaultOrgId = defaultOrgId;
   }
 
-  /**
-   * Notify External SaaS Compliance Platform when customer grants consent (e.g. during Signup / Settings)
-   */
-  async notifyConsentGrant(payload: SaasConsentGrantPayload): Promise<{ success: boolean; data?: any; error?: string }> {
-    const url = `${this.controlPlaneUrl}/api/v1/public/consent/grant`;
-    const body = {
-      organizationSlug: payload.organizationSlug || this.defaultOrgSlug,
-      organizationId: payload.organizationId || this.defaultOrgId,
-      dataSubjectIdentifier: payload.dataSubjectIdentifier,
-      purpose: payload.purpose || 'Personalized Recommendations & Order Fulfillment',
-      purposes: payload.purposes || [payload.purpose || 'Personalized Recommendations & Order Fulfillment'],
-      noticeId: payload.noticeId || 'DPDP-NOTICE-2025-V2.1',
-    };
-
+  private async post(path: string, payload: object, signed = true): Promise<SaasResult> {
+    if (signed && (!this.keyId || !this.secret)) {
+      return { success: false, error: 'Portal API credentials are not configured; the portal operation was not performed.' };
+    }
+    const url = new URL(this.controlPlaneUrl + path);
+    if (url.protocol !== 'https:' && !['127.0.0.1','localhost','[::1]'].includes(url.hostname)) {
+      return { success: false, error: 'The compliance endpoint must use HTTPS.' };
+    }
+    // Make repeated identical requests produce distinct signed request targets.
+    url.searchParams.set('requestId', randomUUID());
+    const body = JSON.stringify(payload);
+    const headers: Record<string,string> = { 'Content-Type': 'application/json' };
+    if (signed) {
+      const timestamp = Math.floor(Date.now()/1000).toString();
+      const digest = createHash('sha256').update(body).digest('hex');
+      const canonical = `${timestamp}\nPOST\n${url.pathname}${url.search}\n${digest}`;
+      headers['X-DPDPOS-Key-Id'] = this.keyId!;
+      headers['X-DPDPOS-Timestamp'] = timestamp;
+      headers['X-DPDPOS-Signature'] = createHmac('sha256',this.secret!).update(canonical).digest('hex');
+    }
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Simulated-Enterprise-Storefront/1.0',
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(4000),
-      });
-
-      if (!response.ok) {
-        // Try fallback legacy route if available
-        const fallbackUrl = `${this.controlPlaneUrl}/api/consent/record`;
-        const fbRes = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tenantId: this.defaultOrgSlug,
-            principalId: payload.dataSubjectIdentifier,
-            noticeVersion: '2.1',
-            consentedPurposes: payload.purposes || [payload.purpose || 'essential'],
-            channel: 'STOREFRONT_SIGNUP',
-          }),
-          signal: AbortSignal.timeout(3000),
-        }).catch(() => null);
-
-        if (fbRes && fbRes.ok) {
-          const fbData = await fbRes.json();
-          return { success: true, data: fbData };
-        }
-
-        const errText = await response.text().catch(() => 'Unknown error');
-        console.warn(`[Compliance SaaS Client] Grant webhook returned ${response.status}: ${errText}`);
-        return { success: false, error: errText };
+      const response = await fetch(url, { method:'POST', headers, body,
+        redirect:'error', signal:AbortSignal.timeout(15000) });
+      const envelope = await response.json() as any;
+      if (!response.ok || envelope.success === false) {
+        return { success:false, error: typeof envelope.error === 'string' ? envelope.error
+          : envelope.error?.message || envelope.message || `Portal request failed (HTTP ${response.status}).` };
       }
-
-      const data = await response.json();
-      console.log(`[Compliance SaaS Client] Consent grant recorded at SaaS for ${payload.dataSubjectIdentifier}`);
-      return { success: true, data };
-    } catch (err: any) {
-      console.warn(`[Compliance SaaS Client] SaaS unreachable for consent grant: ${err.message}`);
-      return { success: false, error: err.message };
+      return { success:true, data:envelope.data ?? envelope };
+    } catch {
+      return { success:false, error:'The portal request could not be confirmed. Check connectivity and certificate trust before retrying.' };
     }
   }
 
-  /**
-   * Notify External SaaS Compliance Platform when customer revokes consent (e.g. unchecks marketing)
-   */
-  async notifyConsentRevocation(payload: SaasConsentRevocationPayload): Promise<{ success: boolean; data?: any; error?: string }> {
-    const url = `${this.controlPlaneUrl}/api/v1/public/consent/revoke`;
-    const body = {
-      organizationSlug: payload.organizationSlug || this.defaultOrgSlug,
-      organizationId: payload.organizationId || this.defaultOrgId,
-      dataSubjectIdentifier: payload.dataSubjectIdentifier,
-      purpose: payload.purpose || 'Personalized Recommendations & Marketing Communications',
-      reason: payload.reason || 'Data Principal revoked consent via Self-Service Privacy Center',
-    };
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Simulated-Enterprise-Storefront/1.0',
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(4000),
-      });
-
-      if (!response.ok) {
-        // Fallback to legacy endpoint
-        const fallbackUrl = `${this.controlPlaneUrl}/api/consent/record`;
-        const fbRes = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tenantId: this.defaultOrgSlug,
-            principalId: payload.dataSubjectIdentifier,
-            noticeVersion: '2.1',
-            consentedPurposes: ['essential'], // Removed marketing
-            channel: 'PRIVACY_PORTAL',
-          }),
-          signal: AbortSignal.timeout(3000),
-        }).catch(() => null);
-
-        if (fbRes && fbRes.ok) {
-          const fbData = await fbRes.json();
-          return { success: true, data: fbData };
-        }
-
-        const errText = await response.text().catch(() => 'Unknown error');
-        console.warn(`[Compliance SaaS Client] Revoke webhook returned ${response.status}: ${errText}`);
-        return { success: false, error: errText };
-      }
-
-      const data = await response.json();
-      console.log(`[Compliance SaaS Client] Consent revocation recorded at SaaS for ${payload.dataSubjectIdentifier}`);
-      return { success: true, data };
-    } catch (err: any) {
-      console.warn(`[Compliance SaaS Client] SaaS unreachable for consent revocation: ${err.message}`);
-      return { success: false, error: err.message };
-    }
+  private organization(payload: {organizationId?:string; organizationSlug?:string}) {
+    const id = payload.organizationId || this.defaultOrgId;
+    if (id) return { organizationId:id };
+    // The verified key selects its own organization. Console codes need not
+    // match the public API's name-based slug selector.
+    return this.keyId ? {} : { organizationSlug:payload.organizationSlug || this.defaultOrgSlug };
   }
 
-  /**
-   * Submit statutory DSR Erasure Request (DPDP Act §12 Right to Erasure / "Delete My Account")
-   */
-  async submitDsrErasure(payload: SaasDsrRequestPayload): Promise<{ success: boolean; data?: any; error?: string }> {
-    const url = `${this.controlPlaneUrl}/api/v1/public/dsr`;
-    const body = {
-      organizationSlug: payload.organizationSlug || this.defaultOrgSlug,
-      organizationId: payload.organizationId || this.defaultOrgId,
-      requestType: payload.requestType,
-      requesterReference: payload.requesterReference,
-      description: payload.description || 'Data Principal requested account deletion under DPDP Act 2023 §12',
-    };
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'Simulated-Enterprise-Storefront/1.0',
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(4000),
-      });
-
-      if (!response.ok) {
-        // Fallback to legacy DSR route
-        const fallbackUrl = `${this.controlPlaneUrl}/api/dsr/request`;
-        const fbRes = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tenantId: this.defaultOrgSlug,
-            principalId: payload.requesterReference,
-            requestType: 'ERASURE',
-            requestedBy: 'CUSTOMER_PORTAL',
-            gracePeriodDays: 30,
-          }),
-          signal: AbortSignal.timeout(3000),
-        }).catch(() => null);
-
-        if (fbRes && fbRes.ok) {
-          const fbData = await fbRes.json();
-          return { success: true, data: fbData };
-        }
-
-        const errText = await response.text().catch(() => 'Unknown error');
-        console.warn(`[Compliance SaaS Client] Public DSR submission returned ${response.status}: ${errText}`);
-        return { success: false, error: errText };
-      }
-
-      const data = await response.json();
-      console.log(`[Compliance SaaS Client] DSR Erasure request ledgered at SaaS for ${payload.requesterReference}`);
-      return { success: true, data };
-    } catch (err: any) {
-      console.warn(`[Compliance SaaS Client] SaaS unreachable for DSR submission: ${err.message}`);
-      return { success: false, error: err.message };
-    }
+  notifyConsentGrant(payload: SaasConsentGrantPayload): Promise<SaasResult> {
+    const noticeId = payload.noticeId || this.noticeId;
+    return this.post('/api/v1/public/consent/grant', {
+      ...this.organization(payload), dataSubjectIdentifier:payload.dataSubjectIdentifier,
+      purposes:payload.purposes || [payload.purpose || 'essential'],
+      ...(noticeId ? {noticeId} : {}),
+    });
+  }
+  notifyConsentRevocation(payload: SaasConsentRevocationPayload): Promise<SaasResult> {
+    return this.post('/api/v1/public/consent/revoke', {
+      ...this.organization(payload), dataSubjectIdentifier:payload.dataSubjectIdentifier,
+      ...(payload.purpose ? {purpose:payload.purpose} : {}), reason:payload.reason,
+    });
+  }
+  submitDsrErasure(payload: SaasDsrRequestPayload): Promise<SaasResult> {
+    return this.post('/api/v1/public/dsr/start', {
+      ...this.organization(payload), requesterEmail:payload.requesterReference,
+      requestType:payload.requestType,
+    });
+  }
+  verifyDsr(verificationId: string, code: string): Promise<SaasResult> {
+    return this.post('/api/v1/public/dsr/verify', {verificationId,code}, false);
+  }
+  lookupConsent(dataSubjectIdentifier: string): Promise<SaasResult> {
+    return this.post('/api/v1/public/consent/lookup', {dataSubjectIdentifier});
   }
 }

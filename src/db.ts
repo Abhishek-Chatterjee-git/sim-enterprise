@@ -117,6 +117,12 @@ export class EnterpriseDatabase {
       await this.seedData();
     }
 
+    // Persist OTP challenge bindings across Render restarts and deployments.
+    await this.run(`CREATE TABLE IF NOT EXISTS privacy_verification_challenges (
+      user_id VARCHAR(64) PRIMARY KEY REFERENCES users(id),
+      verification_id VARCHAR(128) NOT NULL,
+      expires_at BIGINT NOT NULL
+    )`);
     this.initialized = true;
     console.log(`[Enterprise DB] Connected and initialized using ${this.isPg ? 'PostgreSQL' : 'SQLite'}`);
   }

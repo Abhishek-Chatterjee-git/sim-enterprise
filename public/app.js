@@ -672,7 +672,17 @@ async function executeAccountErasure() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Erasure request failed');
 
-    alert(`🛡️ Right to Erasure Scheduled!\n${data.message}`);
+    if (data.status !== 'VERIFICATION_REQUIRED') throw new Error('The portal did not start email verification.');
+    const code = prompt(data.message);
+    if (!code) return;
+    const verification = await fetch('/api/privacy/dsr/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ code: code.trim() }),
+    });
+    const result = await verification.json();
+    if (!verification.ok) throw new Error(result.error || 'Verification failed');
+    alert(`${result.message}\nPortal request: ${result.reference}`);
     await initPrivacyCenter();
   } catch (err) {
     alert(err.message || 'Erasure request could not be completed.');

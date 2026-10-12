@@ -1,45 +1,19 @@
-# Multi-stage production Dockerfile for Simulated Enterprise
-FROM node:22-alpine AS builder
-
+FROM node:22-bookworm-slim AS build
 WORKDIR /app
-
-# Copy root workspace configurations
 COPY package.json package-lock.json ./
-COPY shared/package.json ./shared/
-COPY agent/package.json ./agent/
-COPY sim-enterprise/ecom-app/package.json ./sim-enterprise/ecom-app/
+RUN npm ci --no-audit --no-fund
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
 
-RUN npm ci
-
-# Copy sources
-COPY shared ./shared
-COPY agent ./agent
-COPY sim-enterprise/ecom-app ./sim-enterprise/ecom-app
-
-# Build all packages
-RUN npm run build:shared
-RUN npm run build:ecom
-
-# Production runtime stage
-FROM node:22-alpine AS runner
-
+FROM node:22-bookworm-slim
 WORKDIR /app
-
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV AGENT_PORT=5000
-
-# Copy node_modules and built dist
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/shared/package.json ./shared/
-COPY --from=builder /app/shared/dist ./shared/dist
-COPY --from=builder /app/sim-enterprise/ecom-app/package.json ./sim-enterprise/ecom-app/
-COPY --from=builder /app/sim-enterprise/ecom-app/dist ./sim-enterprise/ecom-app/dist
-COPY --from=builder /app/sim-enterprise/ecom-app/public ./sim-enterprise/ecom-app/public
-
-WORKDIR /app/sim-enterprise/ecom-app
-
-EXPOSE 3000 5000 3001
-
+ENV NODE_ENV=production PORT=10000
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+COPY --from=build /app/dist ./dist
+COPY public ./public
+COPY deploy/render ./deploy/render
+USER node
+EXPOSE 10000
 CMD ["node", "dist/index.js"]

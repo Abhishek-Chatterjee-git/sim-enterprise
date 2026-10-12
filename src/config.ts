@@ -6,21 +6,21 @@
 export interface EnterpriseConfig {
   nodeEnv: string;
   appMode: 'all' | 'storefront' | 'worker' | 'admin';
-  
+
   // Web Service
   port: number;
   adminPort: number;
   sessionSecret: string;
-  
+
   // Database Configuration
   dbConnectionString: string;
   dbType: 'POSTGRES' | 'SQLITE';
-  
+
   // External SaaS Compliance Provider (DPDP Control Plane)
   controlPlaneUrl: string;
   organizationId?: string;
   organizationSlug: string;
-  
+
   // In-VPC Zone Agent Configuration
   agentId: string;
   agentName: string;
@@ -31,15 +31,18 @@ export interface EnterpriseConfig {
 }
 
 export function loadEnterpriseConfig(): EnterpriseConfig {
-  const rawConnStr = 
-    process.env.DATABASE_URL || 
-    process.env.DB_CONNECTION_STRING || 
+  if (process.env.NODE_ENV === 'production' && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET.length < 32)) {
+    throw new Error('Production requires a SESSION_SECRET of at least 32 characters');
+  }
+  const rawConnStr =
+    process.env.DATABASE_URL ||
+    process.env.DB_CONNECTION_STRING ||
     './data/enterprise_data.sqlite';
 
   let dbType: 'POSTGRES' | 'SQLITE' = 'SQLITE';
   if (
-    rawConnStr.startsWith('postgres://') || 
-    rawConnStr.startsWith('postgresql://') || 
+    rawConnStr.startsWith('postgres://') ||
+    rawConnStr.startsWith('postgresql://') ||
     process.env.DB_TYPE?.toUpperCase() === 'POSTGRES'
   ) {
     dbType = 'POSTGRES';

@@ -1,30 +1,27 @@
-# Render Blueprint Deployment Configuration
-# Pure Enterprise E-Commerce Platform
-# Deploys:
-# 1. PostgreSQL Database (enterprise_db)
-# 2. Storefront Web Service (ARTISAN LUXE E-Commerce Store & Customer Privacy Settings)
-
+# Paid, always-on demo. Review the estimated bill before applying this Blueprint.
 databases:
   - name: enterprise-postgres
     databaseName: enterprise_db
     user: app_user
-    plan: free
-    region: singapore # Closest to India region on Render
+    plan: 0.1c-256mb
+    diskSizeGB: 1
+    postgresMajorVersion: "16"
+    region: singapore
+    ipAllowList: []
 
 services:
-  # ---------------------------------------------------------------------------
-  # 1. Enterprise E-Commerce Storefront & Web Service
-  # ---------------------------------------------------------------------------
   - type: web
     name: sim-enterprise-storefront
-    env: node
-    plan: free
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: 0.5c-512mb
     region: singapore
-    buildCommand: npm install --include=dev && npm run build
-    startCommand: npm start
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: "10000"
       - key: DATABASE_URL
         fromDatabase:
           name: enterprise-postgres
@@ -32,8 +29,52 @@ services:
       - key: DB_TYPE
         value: POSTGRES
       - key: CONTROL_PLANE_URL
-        value: https://api.yourcompliance.com # Public URL of your deployed SaaS Compliance Control Plane
+        value: https://d-fortress.digitalfortress.in
       - key: ORGANIZATION_SLUG
-        value: artisan-luxe-enterprise
+        value: artison-sons
       - key: SESSION_SECRET
         generateValue: true
+      - key: COMPLIANCE_API_KEY_ID
+        sync: false
+      - key: COMPLIANCE_API_KEY_SECRET
+        sync: false
+      # Background workers cannot accept storefront consent-cache calls.
+      - key: AGENT_LOCAL_SYNC_ENABLED
+        value: "false"
+
+  - type: worker
+    name: sim-enterprise-zone-agent
+    runtime: docker
+    dockerfilePath: ./deploy/render/Agent.Dockerfile
+    plan: 0.5c-512mb
+    region: singapore
+    numInstances: 1
+    disk:
+      name: agent-state
+      mountPath: /var/lib/d-fortress
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CONTROL_PLANE_URL
+        value: https://d-fortress.digitalfortress.in
+      - key: DB_TYPE
+        value: POSTGRES
+      # A separate restricted role's INTERNAL URL, configured after web startup.
+      - key: DATABASE_URL
+        sync: false
+      - key: AGENT_DATA_DIR
+        value: /var/lib/d-fortress/data
+      - key: AGENT_HOST
+        value: 127.0.0.1
+      - key: AGENT_NAME
+        value: Render-Ecommerce-Demo
+      - key: AGENT_ALLOW_DSR_EXECUTION
+        value: "true"
+      - key: AGENT_MAX_ERASURE_ROWS
+        value: "5"
+      # Current demo uses verified HTTPS and enrolled bearer credentials.
+      # Set required only after platform certificate issuance is verified.
+      - key: AGENT_MTLS
+        value: "off"
+      # Add fresh bootstrap secrets after the worker image has built.

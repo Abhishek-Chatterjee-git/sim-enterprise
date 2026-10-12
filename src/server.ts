@@ -146,12 +146,12 @@ export class EcomServer {
           }
 
           // Outbound Webhook to SaaS Compliance Control Plane
-          await this.saasClient.notifyConsentGrant({
-            dataSubjectIdentifier: email,
-            purposes: consentedPurposes,
-            purpose: consentedPurposes.join(', '),
-            noticeId: 'DPDP-NOTICE-2025-V2.1',
-          });
+          const portalConsentResults = [];
+          for (const purpose of consentedPurposes) {
+            portalConsentResults.push(await this.saasClient.notifyConsentGrant({
+              dataSubjectIdentifier: email, purposes: [purpose],
+            }));
+          }
 
           // Audit log
           await this.db.run(
@@ -165,6 +165,7 @@ export class EcomServer {
           res.end(JSON.stringify({
             success: true,
             token,
+            portalSynced: portalConsentResults.length > 0 && portalConsentResults.every(result => result.success),
             user: { id: userId, fullName, email, phone: phone || '+919800000000', consents: consentedPurposes },
           }));
           return;
@@ -426,9 +427,9 @@ export class EcomServer {
           const body = await this.readJsonBody(req);
           const { purposeId, isGranted } = body;
 
-          if (!purposeId) {
+          if (!['essential', 'marketing', 'analytics'].includes(purposeId) || typeof isGranted !== 'boolean') {
             res.writeHead(400);
-            res.end(JSON.stringify({ error: 'Purpose ID is required.' }));
+            res.end(JSON.stringify({ error: 'A supported purpose ID and boolean isGranted are required.' }));
             return;
           }
 
@@ -452,14 +453,15 @@ export class EcomServer {
           await this.syncWithLocalAgent(user.email, purposeId, Boolean(isGranted));
 
           // Call External SaaS Webhook
+          let portalResult;
           if (!isGranted) {
-            await this.saasClient.notifyConsentRevocation({
+            portalResult = await this.saasClient.notifyConsentRevocation({
               dataSubjectIdentifier: user.email,
               purpose: purposeId,
               reason: `Customer revoked consent for ${purposeId} in Privacy Center`,
             });
           } else {
-            await this.saasClient.notifyConsentGrant({
+            portalResult = await this.saasClient.notifyConsentGrant({
               dataSubjectIdentifier: user.email,
               purpose: purposeId,
               purposes: [purposeId],
@@ -473,10 +475,13 @@ export class EcomServer {
             [`log-${Date.now()}`, isGranted ? 'CONSENT_GRANTED' : 'CONSENT_REVOKED', auth.userId, req.socket.remoteAddress || '127.0.0.1', req.headers['user-agent'] || '', `Consent for purpose '${purposeId}' set to ${isGranted}`]
           );
 
-          res.writeHead(200);
+          res.writeHead(portalResult.success ? 200 : 502);
           res.end(JSON.stringify({
-            success: true,
-            message: `Consent for '${purposeId}' successfully ${isGranted ? 'granted' : 'revoked'}`,
+            success: portalResult.success,
+            portalSynced: portalResult.success,
+            localSaved: true,
+            error: portalResult.success ? undefined : `Preference saved locally; portal synchronization failed. ${portalResult.error}`,
+            message: `Consent for '${purposeId}' ${isGranted ? 'granted' : 'revoked'} locally`,
             purposeId,
             isGranted: Boolean(isGranted),
           }));
@@ -502,43 +507,56 @@ export class EcomServer {
             return;
           }
 
-          // Step 1: Quarantine / Soft-delete in local database
-          await this.db.run(
-            `UPDATE users SET status = 'SOFT_DELETED', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-            [auth.userId]
-          );
-
-          // Step 2: Invalidate local agent consent cache
-          await this.syncWithLocalAgent(user.email, 'marketing', false);
-          await this.syncWithLocalAgent(user.email, 'analytics', false);
-
-          // Step 3: Outbound webhook to SaaS Compliance Control Plane
-          await this.saasClient.submitDsrErasure({
+          const portalResult = await this.saasClient.submitDsrErasure({
             requesterReference: user.email,
             requestType: 'ERASURE',
             description: reason,
           });
-          await this.saasClient.notifyConsentRevocation({
-            dataSubjectIdentifier: user.email,
-            purpose: 'ALL_PROCESSING',
-            reason: 'Account deletion requested',
-          });
-
-          // Step 4: Audit log
-          await this.db.run(
-            `INSERT INTO audit_logs (id, action, user_id, ip_address, user_agent, details)
-             VALUES ($1, 'DSR_ERASURE_REQUESTED', $2, $3, $4, $5)`,
-            [`log-${Date.now()}`, auth.userId, req.socket.remoteAddress || '127.0.0.1', req.headers['user-agent'] || '', `Right to Erasure submitted for ${user.email}. Grace period: 30 days.`]
-          );
-
-          res.writeHead(200);
+          if (!portalResult.success || !portalResult.data?.verificationId) {
+            res.writeHead(502);
+            res.end(JSON.stringify({ success: false, error: portalResult.error || 'Portal verification was not started.' }));
+            return;
+          }
+          await this.db.run(`INSERT INTO privacy_verification_challenges (user_id, verification_id, expires_at)
+            VALUES ($1,$2,$3) ON CONFLICT(user_id) DO UPDATE SET
+            verification_id = excluded.verification_id, expires_at = excluded.expires_at`,
+            [auth.userId, portalResult.data.verificationId, Date.now() + portalResult.data.expiresInSeconds * 1000]);
+          res.writeHead(202);
           res.end(JSON.stringify({
             success: true,
-            status: 'QUARANTINED_PENDING_ERASURE',
-            message: 'Your account has been scheduled for erasure. You have a 30-day grace period to restore access.',
-            gracePeriodDays: 30,
-            requestedAt: new Date().toISOString(),
+            status: 'VERIFICATION_REQUIRED',
+            message: 'Enter the six-digit code sent to your account email to submit your erasure request.',
+            ...portalResult.data,
           }));
+          return;
+        }
+
+        if (pathname === '/api/privacy/dsr/verify' && method === 'POST') {
+          const auth = this.authenticateRequest(req);
+          if (!auth) { res.writeHead(401); res.end(JSON.stringify({error:'Authentication required.'})); return; }
+          const {code} = await this.readJsonBody(req);
+          const challenge = await this.db.get<{verification_id:string; expires_at:number|string}>(
+            'SELECT verification_id, expires_at FROM privacy_verification_challenges WHERE user_id = $1',[auth.userId]);
+          if (!challenge || Number(challenge.expires_at) <= Date.now() || !/^\d{6}$/.test(String(code))) {
+            res.writeHead(400); res.end(JSON.stringify({error:'Start a new erasure request and enter a valid six-digit code.'})); return;
+          }
+          const user = await this.db.get<any>('SELECT * FROM users WHERE id = $1',[auth.userId]);
+          if (!user) { res.writeHead(404); res.end(JSON.stringify({error:'User not found.'})); return; }
+          const result = await this.saasClient.verifyDsr(challenge.verification_id,String(code));
+          if (!result.success || !result.data?.reference) {
+            res.writeHead(502); res.end(JSON.stringify({error:result.error || 'The portal did not confirm the request.'})); return;
+          }
+          await this.db.run('DELETE FROM privacy_verification_challenges WHERE user_id = $1',[auth.userId]);
+          await this.db.run("UPDATE users SET status = 'SOFT_DELETED', updated_at = CURRENT_TIMESTAMP WHERE id = $1",[auth.userId]);
+          await this.db.run('UPDATE consent_preferences SET is_granted = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2',
+            [this.db.isPostgres() ? false : 0,auth.userId]);
+          const withdrawal = await this.saasClient.notifyConsentRevocation({dataSubjectIdentifier:user.email,reason:'Verified account erasure request'});
+          await this.db.run(`INSERT INTO audit_logs (id,action,user_id,details) VALUES ($1,'DSR_ERASURE_VERIFIED',$2,$3)`,
+            [`log-${randomBytes(8).toString('hex')}`,auth.userId,`Portal request ${result.data.reference}; erasure execution pending.`]);
+          res.writeHead(201);
+          res.end(JSON.stringify({success:true,status:'QUARANTINED_PENDING_ERASURE',reference:result.data.reference,
+            portalStatus:result.data.status, consentPortalSynced:withdrawal.success,
+            message:'The portal confirmed your request. Your local account is quarantined; masking or deletion must still be verified through agent execution.'}));
           return;
         }
 
@@ -637,15 +655,20 @@ export class EcomServer {
   }
 
   private async syncWithLocalAgent(principalId: string, purposeId: string, allowed: boolean): Promise<void> {
+    if (process.env.AGENT_LOCAL_SYNC_ENABLED === 'false') return;
+    const token = process.env.AGENT_LOCAL_API_TOKEN;
+    if (!token) return;
+    const base = (process.env.AGENT_LOCAL_URL || `http://127.0.0.1:${this.config.agentPort}`).replace(/\/$/,'');
     try {
-      await fetch(`http://localhost:${this.config.agentPort}/consent/sync`, {
+      const response = await fetch(`${base}/consent/sync`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ principalId, purposeId, allowed, noticeVersion: '2.1' }),
         signal: AbortSignal.timeout(1000),
       });
+      if (!response.ok) console.warn(`[Consent cache] Sync was not confirmed (HTTP ${response.status})`);
     } catch {
-      // Local agent will load from DB on next cache miss
+      console.warn('[Consent cache] Sync was not confirmed; platform delivery is handled separately');
     }
   }
 

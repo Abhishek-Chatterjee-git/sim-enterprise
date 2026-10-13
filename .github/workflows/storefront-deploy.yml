@@ -28,6 +28,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm run build
       - run: node dist/test.js
+      - run: node --test tests/erasure-ui.test.mjs
       - run: node --test deploy/render/start-agent.test.mjs deploy/render/persistence.test.mjs deploy/supabase/serverless.test.mjs
       - run: python3 deploy/aws/test-storefront-deploy.py
       - name: Build storefront image

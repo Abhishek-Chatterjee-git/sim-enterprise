@@ -1,0 +1,67 @@
+name: Storefront CI and deploy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storefront:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: storefront-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - run: node dist/test.js
+      - run: node --test deploy/render/start-agent.test.mjs deploy/render/persistence.test.mjs deploy/supabase/serverless.test.mjs
+      - run: python3 deploy/aws/test-storefront-deploy.py
+      - name: Build storefront image
+        run: docker build --platform linux/amd64 -t "dfortress-demo-storefront:$GITHUB_SHA" .
+      - name: Upload and deploy storefront
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER || 'root' }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT || '22' }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/root/sim-enterprise/deploy/aws' }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || { echo 'Set DEPLOY_HOST'; exit 1; }
+          [[ "$DEPLOY_USER" =~ ^[a-zA-Z_][a-zA-Z0-9_-]*$ ]] || exit 1
+          [[ "$DEPLOY_PORT" =~ ^[0-9]{1,5}$ ]] || exit 1
+          [[ "$DEPLOY_PATH" =~ ^/[a-zA-Z0-9_./-]+$ ]] || exit 1
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/storefront_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          trap 'rm -f "$HOME/.ssh/storefront_key"' EXIT
+          ssh_options=(-i "$HOME/.ssh/storefront_key" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=15)
+          remote="$DEPLOY_USER@$DEPLOY_HOST"
+          incoming="/tmp/dfortress-storefront-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker save "dfortress-demo-storefront:$GITHUB_SHA" | gzip > storefront-image.tar.gz
+          digest="$(sha256sum storefront-image.tar.gz | cut -d ' ' -f1)"
+          ssh "${ssh_options[@]}" -p "$DEPLOY_PORT" "$remote" "umask 077; mkdir '$incoming'"
+          scp "${ssh_options[@]}" -P "$DEPLOY_PORT" storefront-image.tar.gz deploy/aws/deploy-storefront.sh "$remote:$incoming/"
+          ssh "${ssh_options[@]}" -p "$DEPLOY_PORT" "$remote" \
+            "bash '$incoming/deploy-storefront.sh' '$DEPLOY_PATH' '$incoming/storefront-image.tar.gz' '$GITHUB_SHA' '$digest'"
+          ssh "${ssh_options[@]}" -p "$DEPLOY_PORT" "$remote" "rm -f '$incoming/storefront-image.tar.gz' '$incoming/deploy-storefront.sh'; rmdir '$incoming'"

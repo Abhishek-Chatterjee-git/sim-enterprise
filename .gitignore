@@ -11,3 +11,6 @@ build/
 .env.local
 deploy/aws/*.env
 deploy/supabase/*.env
+deploy/aws/compose.override.yml
+deploy/aws/compose.override.yml.tmp
+deploy/aws/.storefront-deploy.lock

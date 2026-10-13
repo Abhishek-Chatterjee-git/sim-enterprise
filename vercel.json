@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build",
+  "outputDirectory": "public",
+  "functions": {
+    "api/handler.ts": { "maxDuration": 60 }
+  },
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/handler?__route=:path*" },
+    { "source": "/privacy", "destination": "/privacy-center.html" },
+    { "source": "/privacy-center", "destination": "/privacy-center.html" }
+  ]
+}

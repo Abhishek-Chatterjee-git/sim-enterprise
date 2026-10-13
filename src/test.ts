@@ -3,6 +3,7 @@ import { EnterpriseDatabase } from './db.js';
 import { EcomServer } from './server.js';
 import { createServer } from 'node:http';
 import { createHash, createHmac } from 'node:crypto';
+import { returnDeadline } from './account-return.js';
 
 console.log(`
 ================================================================================
@@ -16,6 +17,7 @@ async function runTests() {
   process.env.COMPLIANCE_API_KEY_ID = 'dpk_0000000000000001';
   process.env.COMPLIANCE_API_KEY_SECRET = 'local-test-secret';
   const portalCalls: string[] = [];
+  let refuseWithdrawal = false;
   const mockPortal = createServer(async (req,res) => {
     let body = ''; for await (const chunk of req) body += chunk;
     const path = new URL(req.url!, 'http://localhost').pathname;
@@ -37,7 +39,11 @@ async function runTests() {
     }
     if (path.endsWith('/dsr/verify')) {
       if (payload.code !== '123456') { res.writeHead(400); res.end(JSON.stringify({error:'Invalid code'})); return; }
-      data = {reference:'test-dsr',status:'OPEN'};
+      data = {reference:'test-dsr',status:'OPEN',statusToken:'dsrst_test_capability_for_mock_only'};
+    }
+    if (path.endsWith('/dsr/withdraw')) {
+      if (refuseWithdrawal) {res.writeHead(409);res.end(JSON.stringify({error:'Erasure already dispatched'}));return;}
+      data = {withdrawn:true,reference:'test-dsr'};
     }
     res.writeHead(200,{'Content-Type':'application/json'});
     res.end(JSON.stringify({success:true,data}));
@@ -182,17 +188,40 @@ async function runTests() {
   });
   assert.strictEqual(verified.status,201);
   assert.strictEqual((await verified.json() as any).reference,'test-dsr');
-  assert.strictEqual((await db.get<any>('SELECT status FROM users WHERE id = $1',['usr-mumbai-101'])).status,'SOFT_DELETED');
+  assert.strictEqual((await db.get<any>('SELECT status FROM users WHERE id = $1',['usr-mumbai-101'])).status,'QUARANTINED');
   console.log('   ✅ Email confirmation required before portal request creation and local quarantine.');
 
   // 10. Test Account Reactivation
   console.log('\n🔹 [Test 10] Restoring Quarantined Account with Valid Password...');
-  const reactivateRes = await fetch(`http://localhost:${TEST_PORT}/api/privacy/dsr/reactivate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'rohit.sharma@example.com', password: 'CustomerPass2026!' }),
+  const returnBody = {email:'rohit.sharma@example.com',password:'CustomerPass2026!',privacyAccepted:true,noticeVersion:'2.1',consents:['essential']};
+  const attemptReturn = (body: object) => fetch(`http://localhost:${TEST_PORT}/api/privacy/dsr/reactivate`,{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),
   });
+  const pendingLogin = await fetch(`http://localhost:${TEST_PORT}/api/auth/login`,{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(returnBody),
+  });
+  assert.strictEqual(pendingLogin.status,403);
+  assert.strictEqual((await pendingLogin.json() as any).requiresPrivacyAcceptance,true);
+  assert.strictEqual((await attemptReturn({...returnBody,privacyAccepted:false})).status,400);
+  assert.strictEqual((await attemptReturn({...returnBody,password:'wrong'})).status,401);
+  const recent = Date.now();
+  await db.run('UPDATE privacy_account_returns SET requested_at=$1 WHERE user_id=$2',[Date.UTC(2020,0,31),'usr-mumbai-101']);
+  assert.strictEqual((await attemptReturn(returnBody)).status,409);
+  await db.run('UPDATE privacy_account_returns SET requested_at=$1 WHERE user_id=$2',[recent,'usr-mumbai-101']);
+  refuseWithdrawal = true;
+  assert.strictEqual((await attemptReturn(returnBody)).status,409);
+  assert.strictEqual((await db.get<any>('SELECT status FROM users WHERE id=$1',['usr-mumbai-101'])).status,'QUARANTINED');
+  refuseWithdrawal = false;
+  const originalHash = (await db.get<any>('SELECT password_hash FROM users WHERE id=$1',['usr-mumbai-101'])).password_hash;
+  await db.run('UPDATE users SET password_hash=$1 WHERE id=$2',['[ERASED:test]','usr-mumbai-101']);
+  assert.strictEqual((await attemptReturn(returnBody)).status,401);
+  await db.run('UPDATE users SET password_hash=$1 WHERE id=$2',[originalHash,'usr-mumbai-101']);
+  const reactivateRes = await attemptReturn(returnBody);
   assert.strictEqual(reactivateRes.status, 200, 'Reactivation must return 200');
+  assert.strictEqual((await db.get<any>('SELECT status FROM users WHERE id=$1',['usr-mumbai-101'])).status,'ACTIVE');
+  const preferences = await db.all<any>('SELECT purpose_id,is_granted FROM consent_preferences WHERE user_id=$1',['usr-mumbai-101']);
+  assert.ok(preferences.every(p=>Boolean(p.is_granted)===(p.purpose_id==='essential')));
+  assert.strictEqual(new Date(returnDeadline(Date.UTC(2026,7,31))).toISOString(),'2027-02-28T00:00:00.000Z');
   console.log('   ✅ Account Restored to ACTIVE status.');
 
   // Cleanup
@@ -200,6 +229,7 @@ async function runTests() {
   assert.ok(portalCalls.includes('/api/v1/public/consent/revoke'));
   assert.ok(portalCalls.includes('/api/v1/public/dsr/start'));
   assert.ok(portalCalls.includes('/api/v1/public/dsr/verify'));
+  assert.ok(portalCalls.includes('/api/v1/public/dsr/withdraw'));
   await new Promise<void>(resolve => mockPortal.close(() => resolve()));
   console.log(`
 ================================================================================

@@ -162,6 +162,26 @@ function openAuthModal(mode = 'signup') {
   const errorMsg = document.getElementById('authErrorMsg');
 
   if (errorMsg) errorMsg.classList.add('hidden');
+  let returnNotice = document.getElementById('returnPrivacyNotice');
+  if (!returnNotice && submitBtn) {
+    returnNotice = document.createElement('section');
+    returnNotice.id = 'returnPrivacyNotice';
+    returnNotice.className = 'hidden space-y-3 rounded-lg border border-gray-300 p-4 text-sm';
+    returnNotice.innerHTML = `<h3 class="font-semibold">Review privacy notice — version 2.1</h3>
+      <p>We use your account details to provide your account and process orders. Marketing and analytics are optional.
+      You can change consent or request erasure in your privacy centre.</p>
+      <p>Returning withdraws your pending erasure request. It does not restore data already erased.</p>
+      <a href="/privacy" target="_blank" rel="noopener" class="underline">Review privacy preferences and rights</a>
+      <label class="block"><input type="checkbox" id="returnPrivacyAccepted"> I have read and accept this privacy notice and want to withdraw my pending erasure request.</label>
+      <label class="block"><input type="checkbox" id="returnMarketing"> Allow marketing communications</label>
+      <label class="block"><input type="checkbox" id="returnAnalytics"> Allow analytics</label>`;
+    submitBtn.before(returnNotice);
+  }
+  if (returnNotice) returnNotice.classList.toggle('hidden', mode !== 'return');
+  for (const id of ['returnPrivacyAccepted','returnMarketing','returnAnalytics']) {
+    const checkbox = document.getElementById(id);
+    if (checkbox) checkbox.checked = false;
+  }
 
   if (mode === 'signup') {
     if (title) title.textContent = 'Customer Registration';
@@ -177,6 +197,11 @@ function openAuthModal(mode = 'signup') {
     if (submitBtn) submitBtn.textContent = 'Sign In';
     if (togglePrompt) togglePrompt.textContent = "Don't have an account?";
     if (toggleBtn) toggleBtn.textContent = 'Register';
+  }
+  if (mode === 'return') {
+    if (title) title.textContent = 'Return to your account';
+    if (subtitle) subtitle.textContent = 'Available within six months, while erasure has not been dispatched';
+    if (submitBtn) submitBtn.textContent = 'Accept Privacy Notice & Return';
   }
 
   if (modal) modal.classList.remove('hidden');
@@ -232,6 +257,20 @@ async function handleAuthSubmit(e) {
       localStorage.setItem('ecom_token', data.token);
       localStorage.setItem('ecom_user', JSON.stringify(data.user));
       currentUser = data.user;
+    } else if (authMode === 'return') {
+      if (!document.getElementById('returnPrivacyAccepted')?.checked) throw new Error('Please read and accept the privacy notice.');
+      const consents = ['essential'];
+      if (document.getElementById('returnMarketing')?.checked) consents.push('marketing');
+      if (document.getElementById('returnAnalytics')?.checked) consents.push('analytics');
+      const res = await fetch('/api/privacy/dsr/reactivate', {
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({email,password,privacyAccepted:true,noticeVersion:'2.1',consents}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Account return failed');
+      localStorage.setItem('ecom_token',data.token);
+      localStorage.setItem('ecom_user',JSON.stringify(data.user));
+      currentUser = data.user;
     } else {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -240,6 +279,10 @@ async function handleAuthSubmit(e) {
       });
 
       const data = await res.json();
+      if (!res.ok && data.requiresPrivacyAcceptance) {
+        openAuthModal('return');
+        return;
+      }
       if (!res.ok) throw new Error(data.error || 'Invalid credentials');
 
       localStorage.setItem('ecom_token', data.token);
@@ -260,7 +303,8 @@ async function handleAuthSubmit(e) {
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
-      submitBtn.textContent = authMode === 'signup' ? 'Complete Registration & Sign In' : 'Sign In';
+      submitBtn.textContent = authMode === 'return' ? 'Accept Privacy Notice & Return'
+        : authMode === 'signup' ? 'Complete Registration & Sign In' : 'Sign In';
     }
   }
 }
@@ -304,8 +348,8 @@ function renderProductGrid() {
   const grid = document.getElementById('productGrid');
   if (!grid) return;
 
-  const filtered = selectedCategory === 'ALL' 
-    ? allProducts 
+  const filtered = selectedCategory === 'ALL'
+    ? allProducts
     : allProducts.filter((p) => p.category.toLowerCase() === selectedCategory.toLowerCase());
 
   if (filtered.length === 0) {
@@ -581,14 +625,14 @@ async function initPrivacyCenter() {
 
     if (marketingPill) {
       marketingPill.textContent = mktConsent ? 'Consent Active' : 'Consent Revoked';
-      marketingPill.className = mktConsent 
+      marketingPill.className = mktConsent
         ? 'text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-aloe text-aloe-dark font-semibold'
         : 'text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-red-100 text-red-800 font-semibold';
     }
 
     if (analyticsPill) {
       analyticsPill.textContent = anlConsent ? 'Consent Active' : 'Consent Revoked';
-      analyticsPill.className = anlConsent 
+      analyticsPill.className = anlConsent
         ? 'text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-aloe text-aloe-dark font-semibold'
         : 'text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-red-100 text-red-800 font-semibold';
     }
@@ -608,7 +652,7 @@ async function handleConsentToggle(purposeId, isGranted) {
 
   if (pill) {
     pill.textContent = isGranted ? 'Consent Active' : 'Consent Revoked';
-    pill.className = isGranted 
+    pill.className = isGranted
       ? 'text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-aloe text-aloe-dark font-semibold'
       : 'text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-red-100 text-red-800 font-semibold';
   }
@@ -690,31 +734,5 @@ async function executeAccountErasure() {
 }
 
 async function restoreAccount() {
-  const email = prompt('Enter your registered email address to restore your account:');
-  if (!email) return;
-  const password = prompt('Enter your password:');
-  if (!password) return;
-
-  try {
-    const res = await fetch('/api/privacy/dsr/reactivate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim(), password }),
-    });
-
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Restoration failed');
-
-    if (data.token) {
-      localStorage.setItem('ecom_token', data.token);
-      localStorage.setItem('ecom_user', JSON.stringify(data.user));
-      currentUser = data.user;
-    }
-
-    alert('🎉 Account Restored Successfully to ACTIVE status!');
-    renderAuthHeader();
-    await initPrivacyCenter();
-  } catch (err) {
-    alert(err.message || 'Restoration failed.');
-  }
+  openAuthModal('login');
 }

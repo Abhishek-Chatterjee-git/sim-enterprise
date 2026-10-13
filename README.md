@@ -1,5 +1,9 @@
 # ARTISAN LUXE — Simulated Enterprise E-Commerce & DPDP In-VPC Zone Agent
 
+For the current simulator-only migration, follow [the Vercel/Supabase deployment guide](deploy/supabase/README.md). The main D-fortress platform remains on AWS; the agent runs separately.
+
+For the separate AWS demo instance, follow [the EC2 deployment guide](deploy/aws/README.md).
+
 For the current web-accessible demo, follow [the Render deployment guide](deploy/render/README.md).
 The root `render.yaml` provisions the storefront, PostgreSQL, and a separate agent worker with persistent storage.
 That guide supersedes the older deployment and local-agent networking instructions below.

@@ -7,6 +7,7 @@ import { EnterpriseDatabase } from './db.js';
 import { ComplianceSaasClient } from './saas-client.js';
 import { loadEnterpriseConfig, EnterpriseConfig } from './config.js';
 import { hashPassword, verifyPassword, createSessionToken, verifySessionToken, SessionPayload } from './auth.js';
+import { returnDeadline, RETURN_NOTICE_VERSION } from './account-return.js';
 
 export interface EcomServerOptions {
   port?: number;
@@ -62,7 +63,7 @@ export class EcomServer {
     await this.db.close();
   }
 
-  private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const parsedUrl = new URL(req.url || '/', `http://localhost:${this.config.port}`);
     const pathname = parsedUrl.pathname;
     const method = req.method?.toUpperCase();
@@ -190,12 +191,16 @@ export class EcomServer {
           }
 
           if (user.status === 'SOFT_DELETED' || user.status === 'QUARANTINED') {
+            const pending = await this.db.get<any>('SELECT * FROM privacy_account_returns WHERE user_id = $1', [user.id]);
+            const eligible = pending && !pending.reaccepted_at && Date.now() < returnDeadline(Number(pending.requested_at));
             res.writeHead(403);
             res.end(JSON.stringify({
-              error: 'Account is pending erasure (Quarantined)',
+              error: eligible ? 'Your account is awaiting erasure. Review the privacy notice and choose new consent preferences to return.'
+                : 'This account is unavailable. The six-month return window has expired or its erasure request cannot be safely withdrawn.',
               status: user.status,
-              canReactivate: true,
-              email: user.email,
+              requiresPrivacyAcceptance: Boolean(eligible),
+              noticeVersion: RETURN_NOTICE_VERSION,
+              returnUntil: eligible ? new Date(returnDeadline(Number(pending.requested_at))).toISOString() : null,
             }));
             return;
           }
@@ -547,7 +552,15 @@ export class EcomServer {
             res.writeHead(502); res.end(JSON.stringify({error:result.error || 'The portal did not confirm the request.'})); return;
           }
           await this.db.run('DELETE FROM privacy_verification_challenges WHERE user_id = $1',[auth.userId]);
-          await this.db.run("UPDATE users SET status = 'SOFT_DELETED', updated_at = CURRENT_TIMESTAMP WHERE id = $1",[auth.userId]);
+          if (!result.data.statusToken) {
+            res.writeHead(502); res.end(JSON.stringify({error:'The portal did not provide a request status token. Contact the operator before continuing.'})); return;
+          }
+          await this.db.run(`INSERT INTO privacy_account_returns (user_id,request_reference,status_token,requested_at,reaccepted_at)
+            VALUES ($1,$2,$3,$4,NULL) ON CONFLICT(user_id) DO UPDATE SET
+            request_reference=excluded.request_reference,status_token=excluded.status_token,
+            requested_at=excluded.requested_at,reaccepted_at=NULL`,
+            [auth.userId,result.data.reference,result.data.statusToken,Date.now()]);
+          await this.db.run("UPDATE users SET status = 'QUARANTINED', updated_at = CURRENT_TIMESTAMP WHERE id = $1",[auth.userId]);
           await this.db.run('UPDATE consent_preferences SET is_granted = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2',
             [this.db.isPostgres() ? false : 0,auth.userId]);
           const withdrawal = await this.saasClient.notifyConsentRevocation({dataSubjectIdentifier:user.email,reason:'Verified account erasure request'});
@@ -563,7 +576,7 @@ export class EcomServer {
         // 11. Privacy Center: Reactivate Account during grace period (Requires Credentials)
         if (pathname === '/api/privacy/dsr/reactivate' && method === 'POST') {
           const body = await this.readJsonBody(req);
-          const { email, password } = body;
+          const { email, password, privacyAccepted, noticeVersion, consents } = body;
 
           if (!email || !password) {
             res.writeHead(400);
@@ -578,8 +591,43 @@ export class EcomServer {
             return;
           }
 
-          await this.db.run(`UPDATE users SET status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP WHERE id = $1`, [user.id]);
-          await this.syncWithLocalAgent(user.email, 'essential', true);
+          const pending = await this.db.get<any>('SELECT * FROM privacy_account_returns WHERE user_id = $1', [user.id]);
+          if (!['QUARANTINED','SOFT_DELETED'].includes(user.status) || !pending || pending.reaccepted_at ||
+              Date.now() >= returnDeadline(Number(pending.requested_at))) {
+            res.writeHead(409); res.end(JSON.stringify({error:'This account is not eligible for return within the six-month window.'})); return;
+          }
+          if (privacyAccepted !== true || noticeVersion !== RETURN_NOTICE_VERSION || !Array.isArray(consents) ||
+              consents.some((p: unknown) => !['essential','marketing','analytics'].includes(String(p))) || !consents.includes('essential')) {
+            res.writeHead(400); res.end(JSON.stringify({error:'Accept the current privacy notice and choose your consent preferences before returning.'})); return;
+          }
+          // Never restore locally while a portal erasure task can still execute.
+          const withdrawn = await this.saasClient.withdrawDsr(pending.status_token,user.email);
+          if (!withdrawn.success || withdrawn.data?.withdrawn !== true || withdrawn.data?.reference !== pending.request_reference) {
+            res.writeHead(409); res.end(JSON.stringify({error:withdrawn.error || 'The portal could not confirm withdrawal of this erasure request. Your account remains unavailable.'})); return;
+          }
+          const grants = [];
+          for (const purpose of [...new Set<string>(consents)]) {
+            grants.push(await this.saasClient.notifyConsentGrant({dataSubjectIdentifier:user.email,purposes:[purpose]}));
+          }
+          if (grants.some(result => !result.success)) {
+            res.writeHead(502); res.end(JSON.stringify({error:'Erasure was withdrawn, but fresh consent could not be confirmed. Retry privacy acceptance; the account remains unavailable.'})); return;
+          }
+          const changed = await this.db.run(`UPDATE users SET status = 'ACTIVE', updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1 AND password_hash = $2 AND status IN ('QUARANTINED','SOFT_DELETED')`, [user.id,user.password_hash]);
+          if (changed.rowCount !== 1) {
+            res.writeHead(409); res.end(JSON.stringify({error:'The account changed during restoration. Sign in again to check its state.'})); return;
+          }
+          for (const purpose of ['essential','marketing','analytics']) {
+            const granted = consents.includes(purpose);
+            await this.db.run(`INSERT INTO consent_preferences (id,user_id,purpose_id,is_granted,notice_version)
+              VALUES ($1,$2,$3,$4,$5) ON CONFLICT(user_id,purpose_id) DO UPDATE SET
+              is_granted=excluded.is_granted,notice_version=excluded.notice_version,updated_at=CURRENT_TIMESTAMP`,
+              [`cp-${user.id}-${purpose}`,user.id,purpose,this.db.isPostgres()?granted:Number(granted),RETURN_NOTICE_VERSION]);
+            await this.syncWithLocalAgent(user.email,purpose,granted);
+          }
+          await this.db.run('UPDATE privacy_account_returns SET reaccepted_at=$1 WHERE user_id=$2',[Date.now(),user.id]);
+          await this.db.run(`INSERT INTO audit_logs (id,action,user_id,details) VALUES ($1,'ACCOUNT_RETURN_PRIVACY_ACCEPTED',$2,$3)`,
+            [`log-${randomBytes(8).toString('hex')}`,user.id,JSON.stringify({noticeVersion:RETURN_NOTICE_VERSION,purposes:consents,requestReference:pending.request_reference})]);
 
           const token = createSessionToken({ userId: user.id, email: user.email, fullName: user.full_name }, this.config.sessionSecret);
 
@@ -673,6 +721,13 @@ export class EcomServer {
   }
 
   private readJsonBody(req: IncomingMessage): Promise<any> {
+    const supplied = (req as IncomingMessage & {body?:unknown}).body;
+    if (supplied !== undefined) {
+      if (typeof supplied === 'string' || Buffer.isBuffer(supplied)) {
+        return Promise.resolve(JSON.parse(supplied.toString()));
+      }
+      return Promise.resolve(supplied);
+    }
     return new Promise((resolve, reject) => {
       let data = '';
       req.on('data', (chunk) => {

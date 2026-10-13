@@ -1,0 +1,4 @@
+{$DEMO_HOSTNAME} {
+    encode gzip
+    reverse_proxy storefront:10000
+}

@@ -1,0 +1,37 @@
+# Optional managed agent host. No Render storefront or database is provisioned.
+services:
+  - type: worker
+    name: sim-enterprise-supabase-agent
+    runtime: docker
+    dockerfilePath: ./deploy/render/Agent.Dockerfile
+    region: singapore
+    plan: 0.5c-512mb
+    numInstances: 1
+    disk:
+      name: supabase-agent-state
+      mountPath: /var/lib/d-fortress
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CONTROL_PLANE_URL
+        value: https://d-fortress.digitalfortress.in
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_TYPE
+        value: POSTGRES
+      - key: DB_SCHEMA
+        value: sim_enterprise
+      - key: AGENT_NAME
+        value: Supabase-Ecommerce-Demo
+      - key: AGENT_HOST
+        value: 127.0.0.1
+      - key: AGENT_DATA_DIR
+        value: /var/lib/d-fortress/data
+      - key: AGENT_ALLOW_DSR_EXECUTION
+        value: "true"
+      - key: AGENT_MAX_ERASURE_ROWS
+        value: "5"
+      - key: AGENT_MTLS
+        value: "off"
+      # Add fresh installer bootstrap secrets only after the image is built.

@@ -103,4 +103,7 @@ export class ComplianceSaasClient {
   lookupConsent(dataSubjectIdentifier: string): Promise<SaasResult> {
     return this.post('/api/v1/public/consent/lookup', {dataSubjectIdentifier});
   }
+  withdrawDsr(token: string, requesterEmail: string): Promise<SaasResult> {
+    return this.post('/api/v1/public/dsr/withdraw', {token, requesterEmail});
+  }
 }

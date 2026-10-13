@@ -1,8 +1,11 @@
+/// <reference path="./sqlite.d.ts" />
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync } from 'node:sqlite';
+import { createRequire } from 'node:module';
 import pg from 'pg';
+import { postgresConfig } from './postgres-config.js';
 import { hashPassword } from './auth.js';
 
 // Verhoeff D5 multiplication and permutation tables for Indian Aadhaar validation
@@ -79,18 +82,11 @@ export class EnterpriseDatabase {
     return this.sqliteDb;
   }
 
-  async init(): Promise<void> {
+  async init(options: {initializeSchema?: boolean} = {}): Promise<void> {
     if (this.initialized) return;
 
     if (this.isPg) {
-      const isCloud = this.dbPathOrUri.includes('render.com') || this.dbPathOrUri.includes('sslmode=require');
-      this.pgPool = new pg.Pool({
-        connectionString: this.dbPathOrUri,
-        ssl: isCloud ? { rejectUnauthorized: false } : undefined,
-        max: 10,
-        idleTimeoutMillis: 10000,
-        connectionTimeoutMillis: 5000,
-      });
+      this.pgPool = new pg.Pool(postgresConfig(this.dbPathOrUri));
 
       const client = await this.pgPool.connect();
       try {
@@ -99,9 +95,20 @@ export class EnterpriseDatabase {
         client.release();
       }
 
+      if (options.initializeSchema === false) {
+        await this.pgPool.query('SELECT 1 FROM users LIMIT 0');
+        await this.pgPool.query('SELECT 1 FROM privacy_verification_challenges LIMIT 0');
+        await this.pgPool.query('SELECT 1 FROM privacy_account_returns LIMIT 0');
+        this.initialized = true;
+        return;
+      }
+      const schema = process.env.DATABASE_SCHEMA || 'public';
+      if (schema !== 'public') await this.pgPool.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
       await this.initPostgresSchema();
       await this.seedData();
     } else {
+      if (options.initializeSchema === false) throw new Error('Serverless deployment requires PostgreSQL');
+      const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as typeof import('node:sqlite');
       if (this.dbPathOrUri !== ':memory:') {
         const fullPath = resolve(this.dbPathOrUri);
         const dir = dirname(fullPath);
@@ -122,6 +129,13 @@ export class EnterpriseDatabase {
       user_id VARCHAR(64) PRIMARY KEY REFERENCES users(id),
       verification_id VARCHAR(128) NOT NULL,
       expires_at BIGINT NOT NULL
+    )`);
+    await this.run(`CREATE TABLE IF NOT EXISTS privacy_account_returns (
+      user_id VARCHAR(64) PRIMARY KEY REFERENCES users(id),
+      request_reference VARCHAR(128) NOT NULL,
+      status_token VARCHAR(200) NOT NULL,
+      requested_at BIGINT NOT NULL,
+      reaccepted_at BIGINT
     )`);
     this.initialized = true;
     console.log(`[Enterprise DB] Connected and initialized using ${this.isPg ? 'PostgreSQL' : 'SQLite'}`);

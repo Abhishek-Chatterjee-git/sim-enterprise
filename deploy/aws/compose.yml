@@ -1,0 +1,96 @@
+name: dfortress-demo
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ecom_owner
+      POSTGRES_DB: ecommerce_demo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run prepare-env.py}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Run prepare-env.py}
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:?Run prepare-env.py}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-roles.sh:/docker-entrypoint-initdb.d/10-demo-roles.sh:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U ecom_owner -d ecommerce_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  storefront:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports: ["127.0.0.1:3300:10000"]
+    environment:
+      NODE_ENV: production
+      PORT: "10000"
+      DB_TYPE: POSTGRES
+      DATABASE_URL: postgres://ecom_app:${APP_DB_PASSWORD}@postgres:5432/ecommerce_demo
+      SESSION_SECRET: ${SESSION_SECRET:?Run prepare-env.py}
+      CONTROL_PLANE_URL: https://d-fortress.digitalfortress.in
+      ORGANIZATION_SLUG: artison-sons
+      COMPLIANCE_API_KEY_ID: ${COMPLIANCE_API_KEY_ID:-}
+      COMPLIANCE_API_KEY_SECRET: ${COMPLIANCE_API_KEY_SECRET:-}
+      COMPLIANCE_NOTICE_ID: ${COMPLIANCE_NOTICE_ID:-}
+      AGENT_LOCAL_URL: http://agent:5000
+      AGENT_LOCAL_API_TOKEN: ${AGENT_LOCAL_API_TOKEN:?Run prepare-env.py}
+      AGENT_LOCAL_SYNC_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:10000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  agent:
+    build:
+      context: ../..
+      # This platform-neutral bootstrap image also supports EC2.
+      dockerfile: deploy/render/Agent.Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file: ./agent-bootstrap.env
+    environment:
+      NODE_ENV: production
+      CONTROL_PLANE_URL: https://d-fortress.digitalfortress.in
+      DB_TYPE: POSTGRES
+      DATABASE_URL: postgres://demo_zone_agent:${AGENT_DB_PASSWORD}@postgres:5432/ecommerce_demo
+      AGENT_DATA_DIR: /var/lib/d-fortress/data
+      AGENT_HOST: 0.0.0.0
+      AGENT_PORT: "5000"
+      AGENT_LOCAL_API_TOKEN: ${AGENT_LOCAL_API_TOKEN:?Run prepare-env.py}
+      AGENT_NAME: AWS-Ecommerce-Demo
+      AGENT_ALLOW_DSR_EXECUTION: "true"
+      AGENT_MAX_ERASURE_ROWS: "5"
+      AGENT_MTLS: "off"
+    volumes:
+      - agent_state:/var/lib/d-fortress
+    depends_on:
+      storefront:
+        condition: service_healthy
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles: [public]
+    ports: ["80:80", "443:443"]
+    environment:
+      DEMO_HOSTNAME: ${DEMO_HOSTNAME:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      storefront:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  agent_state:
+  caddy_data:
+  caddy_config:

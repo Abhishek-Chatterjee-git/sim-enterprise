@@ -24,11 +24,12 @@ export interface SessionPayload {
   fullName: string;
   role?: string;
   exp: number;
+  issuedAt?: number;
 }
 
 export function createSessionToken(payload: Omit<SessionPayload, 'exp'>, secret: string, expiresInHours = 24): string {
   const exp = Date.now() + expiresInHours * 3600 * 1000;
-  const fullPayload: SessionPayload = { ...payload, exp };
+  const fullPayload: SessionPayload = { ...payload, exp, issuedAt: Date.now() };
   const encodedData = Buffer.from(JSON.stringify(fullPayload)).toString('base64url');
   const signature = createHmac('sha256', secret).update(encodedData).digest('base64url');
   return `${encodedData}.${signature}`;
@@ -37,7 +38,7 @@ export function createSessionToken(payload: Omit<SessionPayload, 'exp'>, secret:
 export function verifySessionToken(token: string, secret: string): SessionPayload | null {
   if (!token || !token.includes('.')) return null;
   const [encodedData, signature] = token.split('.');
-  
+
   const expectedSignature = createHmac('sha256', secret).update(encodedData).digest('base64url');
   if (signature !== expectedSignature) return null;
 

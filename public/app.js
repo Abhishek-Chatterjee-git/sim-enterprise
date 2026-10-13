@@ -9,6 +9,8 @@ let cart = [];
 let allProducts = [];
 let selectedCategory = 'ALL';
 let authMode = 'signup'; // 'signup' | 'login'
+let erasureVerificationPending = false;
+let erasureBusy = false;
 
 // ----------------------------------------------------------------------------
 // Curated Luxury Indian Artisanal Reserve Catalog
@@ -291,6 +293,7 @@ async function handleAuthSubmit(e) {
     }
 
     closeAuthModal();
+    document.getElementById('erasureSubmittedNotice')?.remove();
     renderAuthHeader();
     if (window.location.pathname.includes('/privacy') || window.location.pathname.includes('/privacy-center')) {
       await initPrivacyCenter();
@@ -313,6 +316,10 @@ function handleLogout() {
   localStorage.removeItem('ecom_token');
   localStorage.removeItem('ecom_user');
   currentUser = null;
+  erasureVerificationPending = false;
+  const otpInput = document.getElementById('erasureOtpCode');
+  if (otpInput) otpInput.value = '';
+  closeErasureModal();
   renderAuthHeader();
   if (window.location.pathname.includes('/privacy') || window.location.pathname.includes('/privacy-center')) {
     initPrivacyCenter();
@@ -685,7 +692,10 @@ function promptErasureModal() {
     return;
   }
   const modal = document.getElementById('erasureModal');
+  document.getElementById('erasureConfirmation')?.classList.toggle('hidden', erasureVerificationPending);
+  document.getElementById('erasureOtpForm')?.classList.toggle('hidden', !erasureVerificationPending);
   if (modal) modal.classList.remove('hidden');
+  if (erasureVerificationPending) document.getElementById('erasureOtpCode')?.focus();
 }
 
 function closeErasureModal() {
@@ -694,13 +704,15 @@ function closeErasureModal() {
 }
 
 async function executeAccountErasure() {
-  closeErasureModal();
+  if (erasureBusy || erasureVerificationPending) return;
   const token = localStorage.getItem('ecom_token');
   if (!currentUser || !token) {
     openAuthModal('login');
     return;
   }
 
+  setErasureBusy(true);
+  showErasureError('');
   try {
     const res = await fetch('/api/privacy/dsr/erasure', {
       method: 'POST',
@@ -717,19 +729,67 @@ async function executeAccountErasure() {
     if (!res.ok) throw new Error(data.error || 'Erasure request failed');
 
     if (data.status !== 'VERIFICATION_REQUIRED') throw new Error('The portal did not start email verification.');
-    const code = prompt(data.message);
-    if (!code) return;
+    erasureVerificationPending = true;
+    document.getElementById('erasureConfirmation')?.classList.add('hidden');
+    document.getElementById('erasureOtpForm')?.classList.remove('hidden');
+    const message = document.getElementById('erasureOtpMessage');
+    if (message) message.textContent = `${data.message} You can switch tabs to check your inbox; this form stays open.`;
+    document.getElementById('erasureOtpCode')?.focus();
+  } catch (err) {
+    showErasureError(err.message || 'Erasure request could not be started.');
+  } finally {
+    setErasureBusy(false);
+  }
+}
+
+function setErasureBusy(busy) {
+  erasureBusy = busy;
+  for (const id of ['erasureStartButton', 'erasureVerifyButton']) {
+    const button = document.getElementById(id);
+    if (button) button.disabled = busy;
+  }
+}
+
+function showErasureError(message) {
+  const error = document.getElementById('erasureError');
+  if (error) {
+    error.textContent = message;
+    error.classList.toggle('hidden', !message);
+  }
+}
+
+async function verifyAccountErasure(event) {
+  event.preventDefault();
+  if (erasureBusy || !erasureVerificationPending) return;
+  const token = localStorage.getItem('ecom_token');
+  const code = document.getElementById('erasureOtpCode')?.value.trim();
+  if (!currentUser || !token) { handleLogout(); openAuthModal('login'); return; }
+  if (!/^\d{6}$/.test(code || '')) { showErasureError('Enter the six-digit verification code.'); return; }
+  setErasureBusy(true);
+  showErasureError('');
+  try {
     const verification = await fetch('/api/privacy/dsr/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ code: code.trim() }),
+      body: JSON.stringify({ code }),
     });
     const result = await verification.json();
-    if (!verification.ok) throw new Error(result.error || 'Verification failed');
-    alert(`${result.message}\nPortal request: ${result.reference}`);
-    await initPrivacyCenter();
+    if (!verification.ok || result.success !== true || !result.reference) throw new Error(result.error || 'Verification failed');
+    handleLogout();
+    let notice = document.getElementById('erasureSubmittedNotice');
+    if (!notice) {
+      notice = document.createElement('p');
+      notice.id = 'erasureSubmittedNotice';
+      notice.className = 'mx-auto my-4 max-w-3xl rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900';
+      notice.setAttribute('role', 'status');
+      const main = document.querySelector('main') || document.body;
+      main.prepend(notice);
+    }
+    notice.textContent = `Your deletion request was submitted successfully. You have been signed out. Reference: ${result.reference}. Erasure completes after platform and agent processing.`;
   } catch (err) {
-    alert(err.message || 'Erasure request could not be completed.');
+    showErasureError(err.message || 'Verification failed. Try again.');
+  } finally {
+    setErasureBusy(false);
   }
 }
 

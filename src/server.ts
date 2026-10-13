@@ -227,7 +227,7 @@ export class EcomServer {
 
         // 4. Auth: Me
         if (pathname === '/api/auth/me' && method === 'GET') {
-          const auth = this.authenticateRequest(req);
+          const auth = await this.authenticateRequest(req);
           if (!auth) {
             res.writeHead(401);
             res.end(JSON.stringify({ error: 'Authentication required. Please sign in.' }));
@@ -276,7 +276,7 @@ export class EcomServer {
 
         // 6. Orders: Place Order (Authentication Required)
         if (pathname === '/api/orders' && method === 'POST') {
-          const auth = this.authenticateRequest(req);
+          const auth = await this.authenticateRequest(req);
           if (!auth) {
             res.writeHead(401);
             res.end(JSON.stringify({ error: 'Please sign in or create an account to complete your purchase.' }));
@@ -348,7 +348,7 @@ export class EcomServer {
 
         // 7. Orders: List for authenticated user
         if (pathname === '/api/orders' && method === 'GET') {
-          const auth = this.authenticateRequest(req);
+          const auth = await this.authenticateRequest(req);
           if (!auth) {
             res.writeHead(401);
             res.end(JSON.stringify({ error: 'Authentication required. Please sign in.' }));
@@ -366,7 +366,7 @@ export class EcomServer {
 
         // 8. Privacy Center: Status (Authentication Required)
         if (pathname === '/api/privacy/status' && method === 'GET') {
-          const auth = this.authenticateRequest(req);
+          const auth = await this.authenticateRequest(req);
           if (!auth) {
             res.writeHead(401);
             res.end(JSON.stringify({ error: 'Authentication required. Please sign in to view privacy settings.' }));
@@ -422,7 +422,7 @@ export class EcomServer {
 
         // 9. Privacy Center: Consent Update (Authentication Required)
         if (pathname === '/api/privacy/consent/update' && method === 'POST') {
-          const auth = this.authenticateRequest(req);
+          const auth = await this.authenticateRequest(req);
           if (!auth) {
             res.writeHead(401);
             res.end(JSON.stringify({ error: 'Authentication required. Please sign in to update privacy settings.' }));
@@ -495,7 +495,7 @@ export class EcomServer {
 
         // 10. Privacy Center: Right to Erasure / "Delete My Account" (Authentication Required)
         if (pathname === '/api/privacy/dsr/erasure' && method === 'POST') {
-          const auth = this.authenticateRequest(req);
+          const auth = await this.authenticateRequest(req);
           if (!auth) {
             res.writeHead(401);
             res.end(JSON.stringify({ error: 'Authentication required. You must sign in to request account erasure.' }));
@@ -537,7 +537,7 @@ export class EcomServer {
         }
 
         if (pathname === '/api/privacy/dsr/verify' && method === 'POST') {
-          const auth = this.authenticateRequest(req);
+          const auth = await this.authenticateRequest(req);
           if (!auth) { res.writeHead(401); res.end(JSON.stringify({error:'Authentication required.'})); return; }
           const {code} = await this.readJsonBody(req);
           const challenge = await this.db.get<{verification_id:string; expires_at:number|string}>(
@@ -695,11 +695,20 @@ export class EcomServer {
     }
   }
 
-  private authenticateRequest(req: IncomingMessage): SessionPayload | null {
+  private async authenticateRequest(req: IncomingMessage): Promise<SessionPayload | null> {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
     const token = authHeader.replace('Bearer ', '').trim();
-    return verifySessionToken(token, this.config.sessionSecret);
+    const session = verifySessionToken(token, this.config.sessionSecret);
+    if (!session) return null;
+    const account = await this.db.get<{status:string; requested_at:number|string|null}>(
+      `SELECT users.status, privacy_account_returns.requested_at FROM users
+       LEFT JOIN privacy_account_returns ON privacy_account_returns.user_id = users.id
+       WHERE users.id = $1`, [session.userId]);
+    if (!account || account.status !== 'ACTIVE') return null;
+    // Old sessions remain revoked even if the customer later returns to the account.
+    if (account.requested_at && (session.issuedAt || 0) < Number(account.requested_at)) return null;
+    return session;
   }
 
   private async syncWithLocalAgent(principalId: string, purposeId: string, allowed: boolean): Promise<void> {

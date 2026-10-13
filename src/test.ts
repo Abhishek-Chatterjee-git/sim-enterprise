@@ -189,6 +189,9 @@ async function runTests() {
   assert.strictEqual(verified.status,201);
   assert.strictEqual((await verified.json() as any).reference,'test-dsr');
   assert.strictEqual((await db.get<any>('SELECT status FROM users WHERE id = $1',['usr-mumbai-101'])).status,'QUARANTINED');
+  const oldSessionHeaders = {Authorization:`Bearer ${loginData.token}`};
+  assert.strictEqual((await fetch(`http://localhost:${TEST_PORT}/api/auth/me`,{headers:oldSessionHeaders})).status,401);
+  assert.strictEqual((await fetch(`http://localhost:${TEST_PORT}/api/privacy/status`,{headers:oldSessionHeaders})).status,401);
   console.log('   ✅ Email confirmation required before portal request creation and local quarantine.');
 
   // 10. Test Account Reactivation
@@ -218,6 +221,9 @@ async function runTests() {
   await db.run('UPDATE users SET password_hash=$1 WHERE id=$2',[originalHash,'usr-mumbai-101']);
   const reactivateRes = await attemptReturn(returnBody);
   assert.strictEqual(reactivateRes.status, 200, 'Reactivation must return 200');
+  const returned = await reactivateRes.json() as any;
+  assert.strictEqual((await fetch(`http://localhost:${TEST_PORT}/api/auth/me`,{headers:oldSessionHeaders})).status,401);
+  assert.strictEqual((await fetch(`http://localhost:${TEST_PORT}/api/auth/me`,{headers:{Authorization:`Bearer ${returned.token}`}})).status,200);
   assert.strictEqual((await db.get<any>('SELECT status FROM users WHERE id=$1',['usr-mumbai-101'])).status,'ACTIVE');
   const preferences = await db.all<any>('SELECT purpose_id,is_granted FROM consent_preferences WHERE user_id=$1',['usr-mumbai-101']);
   assert.ok(preferences.every(p=>Boolean(p.is_granted)===(p.purpose_id==='essential')));

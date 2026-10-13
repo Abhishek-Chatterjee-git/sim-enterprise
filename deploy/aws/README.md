@@ -2,6 +2,8 @@
 
 Follow [COMMANDS.md](COMMANDS.md) for the complete command-by-command setup, agent enrollment, HTTPS, verification, and backup runbook.
 
+For automatic storefront updates after deployment, follow [CICD.md](CICD.md). GitHub Actions builds the image and updates only the storefront; the existing server configuration and agent/database volumes remain in place.
+
 The current pending-account return flow requires the main D-fortress backend's signed /api/v1/public/dsr/withdraw endpoint. Deploy and verify that backend change before demonstrating return within six months. The simulator requires the existing password and fresh privacy acceptance, and refuses restoration if the portal cannot confirm withdrawal or erasure has already been dispatched. This does not restore masked passwords/data. Ordinary consent and erasure demonstrations do not require using the return flow.
 
 This deployment runs ecommerce, demo PostgreSQL, and the enrolled zone agent on a separate EC2 instance. It does not use the D-fortress application database. Docker volumes preserve state across container restarts/redeployments; protect the underlying EBS storage and take backups. Terminating an instance may delete its attached storage depending on its settings.
@@ -74,6 +76,8 @@ The shared bootstrap image verifies the release, installs it on the agent_state 
 Keep one agent instance. AGENT_DATA_DIR is /var/lib/d-fortress/data. Do not use DATA_DIR, remove its volume, or copy its identity to another active host. The install is pinned; image rebuilds do not upgrade the release on disk.
 
 The setup keeps AGENT_MTLS=off, matching the previous successful HTTPS/bearer demo. Platform certificate issuance remains unverified. Change to required only once that path works. The agent's local API is authenticated and reachable only inside the Docker network. Local consent synchronization is deliberately disabled until cache hydration/recovery and actual processing enforcement are verified.
+
+The agent database URL explicitly uses sslmode=disable because the bundled PostgreSQL container has no TLS listener and is reachable only inside the same Docker network. This does not disable HTTPS to the control plane. Do not reuse this setting for a remote or publicly reachable database; configure verified database TLS there.
 
 ## Publish HTTPS
 

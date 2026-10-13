@@ -59,7 +59,8 @@ services:
       NODE_ENV: production
       CONTROL_PLANE_URL: https://d-fortress.digitalfortress.in
       DB_TYPE: POSTGRES
-      DATABASE_URL: postgres://demo_zone_agent:${AGENT_DB_PASSWORD}@postgres:5432/ecommerce_demo
+      # This demo PostgreSQL is private to the same Docker network and has no TLS listener.
+      DATABASE_URL: postgres://demo_zone_agent:${AGENT_DB_PASSWORD}@postgres:5432/ecommerce_demo?sslmode=disable
       AGENT_DATA_DIR: /var/lib/d-fortress/data
       AGENT_HOST: 0.0.0.0
       AGENT_PORT: "5000"

@@ -12,7 +12,7 @@ args = parser.parse_args()
 files = [root / name for name in (
     'package.json', 'package-lock.json', 'tsconfig.json', 'Dockerfile', '.dockerignore',
     'deploy/aws/compose.yml', 'deploy/aws/Caddyfile', 'deploy/aws/init-roles.sh',
-    'deploy/aws/prepare-env.py', 'deploy/aws/package-source.py',
+    'deploy/aws/prepare-env.py', 'deploy/aws/package-source.py', 'deploy/aws/redeploy.sh',
     'deploy/aws/README.md', 'deploy/aws/COMMANDS.md',
     'deploy/render/Agent.Dockerfile', 'deploy/render/start-agent.mjs', 'deploy/render/README.md',
 )]

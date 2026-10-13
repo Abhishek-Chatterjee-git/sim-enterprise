@@ -4,6 +4,14 @@ Follow [COMMANDS.md](COMMANDS.md) for the complete command-by-command setup, age
 
 For automatic storefront updates after deployment, follow [CICD.md](CICD.md). GitHub Actions builds the image and updates only the storefront; the existing server configuration and agent/database volumes remain in place.
 
+For a manual update after pulling new source, run this from the simulator repository root:
+
+```sh
+bash deploy/aws/redeploy.sh
+```
+
+The script builds before stopping services, then restarts PostgreSQL, storefront, the already installed agent, and Caddy when DEMO_HOSTNAME is configured. It preserves private environment files and all named volumes, handles the managed CI image override, restores the agent users UPDATE grant, and checks storefront health and agent readiness. Use it after initial installation/enrollment, while no demo deletion task is being executed. The update briefly interrupts the demo. An error stops the script with diagnostics; it does not automatically roll back the entire stack or database changes. The agent's installed signed release stays pinned; no new installation tokens are required.
+
 The current pending-account return flow requires the main D-fortress backend's signed /api/v1/public/dsr/withdraw endpoint. Deploy and verify that backend change before demonstrating return within six months. The simulator requires the existing password and fresh privacy acceptance, and refuses restoration if the portal cannot confirm withdrawal or erasure has already been dispatched. This does not restore masked passwords/data. Ordinary consent and erasure demonstrations do not require using the return flow.
 
 This deployment runs ecommerce, demo PostgreSQL, and the enrolled zone agent on a separate EC2 instance. It does not use the D-fortress application database. Docker volumes preserve state across container restarts/redeployments; protect the underlying EBS storage and take backups. Terminating an instance may delete its attached storage depending on its settings.

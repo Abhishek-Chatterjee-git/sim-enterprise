@@ -11,6 +11,7 @@ let selectedCategory = 'ALL';
 let authMode = 'signup'; // 'signup' | 'login'
 let erasureVerificationPending = false;
 let erasureBusy = false;
+const ERASURE_OTP_STORAGE_KEY = 'ecom_erasure_otp_pending';
 
 // ----------------------------------------------------------------------------
 // Curated Luxury Indian Artisanal Reserve Catalog
@@ -93,13 +94,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   loadStoredSession();
+  restoreErasureOtpState();
   await loadProducts();
   updateCartUI();
 
   // If on Privacy Center page, initialize Privacy Center state
   if (window.location.pathname.includes('/privacy') || window.location.pathname.includes('/privacy-center')) {
     await initPrivacyCenter();
+    syncErasureOtpUi();
   }
+});
+
+// Keep the inline OTP panel visible if the tab is backgrounded and restored.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && erasureVerificationPending) syncErasureOtpUi();
 });
 
 // ----------------------------------------------------------------------------
@@ -316,9 +324,7 @@ function handleLogout() {
   localStorage.removeItem('ecom_token');
   localStorage.removeItem('ecom_user');
   currentUser = null;
-  erasureVerificationPending = false;
-  const otpInput = document.getElementById('erasureOtpCode');
-  if (otpInput) otpInput.value = '';
+  clearErasureOtpState();
   closeErasureModal();
   renderAuthHeader();
   if (window.location.pathname.includes('/privacy') || window.location.pathname.includes('/privacy-center')) {
@@ -691,16 +697,60 @@ function promptErasureModal() {
     openAuthModal('login');
     return;
   }
+  if (erasureVerificationPending) {
+    syncErasureOtpUi();
+    document.getElementById('erasureOtpCode')?.focus();
+    return;
+  }
   const modal = document.getElementById('erasureModal');
-  document.getElementById('erasureConfirmation')?.classList.toggle('hidden', erasureVerificationPending);
-  document.getElementById('erasureOtpForm')?.classList.toggle('hidden', !erasureVerificationPending);
   if (modal) modal.classList.remove('hidden');
-  if (erasureVerificationPending) document.getElementById('erasureOtpCode')?.focus();
 }
 
 function closeErasureModal() {
   const modal = document.getElementById('erasureModal');
   if (modal) modal.classList.add('hidden');
+}
+
+function restoreErasureOtpState() {
+  try {
+    const raw = sessionStorage.getItem(ERASURE_OTP_STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw);
+    if (!saved?.pending) return;
+    erasureVerificationPending = true;
+    const message = document.getElementById('erasureOtpMessage');
+    if (message && saved.message) message.textContent = saved.message;
+  } catch {
+    sessionStorage.removeItem(ERASURE_OTP_STORAGE_KEY);
+  }
+}
+
+function persistErasureOtpState(message) {
+  sessionStorage.setItem(ERASURE_OTP_STORAGE_KEY, JSON.stringify({
+    pending: true,
+    message: message || document.getElementById('erasureOtpMessage')?.textContent || '',
+  }));
+}
+
+function clearErasureOtpState() {
+  erasureVerificationPending = false;
+  sessionStorage.removeItem(ERASURE_OTP_STORAGE_KEY);
+  const otpInput = document.getElementById('erasureOtpCode');
+  if (otpInput) otpInput.value = '';
+  showErasureError('');
+  syncErasureOtpUi();
+}
+
+function syncErasureOtpUi() {
+  const otpForm = document.getElementById('erasureOtpForm');
+  const requestActions = document.getElementById('erasureRequestActions');
+  otpForm?.classList.toggle('hidden', !erasureVerificationPending);
+  requestActions?.classList.toggle('hidden', erasureVerificationPending);
+  closeErasureModal();
+}
+
+function cancelErasureVerification() {
+  clearErasureOtpState();
 }
 
 async function executeAccountErasure() {
@@ -712,7 +762,7 @@ async function executeAccountErasure() {
   }
 
   setErasureBusy(true);
-  showErasureError('');
+  showErasureModalError('');
   try {
     const res = await fetch('/api/privacy/dsr/erasure', {
       method: 'POST',
@@ -730,13 +780,14 @@ async function executeAccountErasure() {
 
     if (data.status !== 'VERIFICATION_REQUIRED') throw new Error('The portal did not start email verification.');
     erasureVerificationPending = true;
-    document.getElementById('erasureConfirmation')?.classList.add('hidden');
-    document.getElementById('erasureOtpForm')?.classList.remove('hidden');
+    const otpMessage = `${data.message} You can switch tabs to check your inbox; this form stays on the page.`;
     const message = document.getElementById('erasureOtpMessage');
-    if (message) message.textContent = `${data.message} You can switch tabs to check your inbox; this form stays open.`;
+    if (message) message.textContent = otpMessage;
+    persistErasureOtpState(otpMessage);
+    syncErasureOtpUi();
     document.getElementById('erasureOtpCode')?.focus();
   } catch (err) {
-    showErasureError(err.message || 'Erasure request could not be started.');
+    showErasureModalError(err.message || 'Erasure request could not be started.');
   } finally {
     setErasureBusy(false);
   }
@@ -752,6 +803,14 @@ function setErasureBusy(busy) {
 
 function showErasureError(message) {
   const error = document.getElementById('erasureError');
+  if (error) {
+    error.textContent = message;
+    error.classList.toggle('hidden', !message);
+  }
+}
+
+function showErasureModalError(message) {
+  const error = document.getElementById('erasureModalError');
   if (error) {
     error.textContent = message;
     error.classList.toggle('hidden', !message);
@@ -775,6 +834,7 @@ async function verifyAccountErasure(event) {
     });
     const result = await verification.json();
     if (!verification.ok || result.success !== true || !result.reference) throw new Error(result.error || 'Verification failed');
+    clearErasureOtpState();
     handleLogout();
     let notice = document.getElementById('erasureSubmittedNotice');
     if (!notice) {

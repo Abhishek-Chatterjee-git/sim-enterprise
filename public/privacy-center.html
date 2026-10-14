@@ -219,12 +219,22 @@
             <li>Masking or deletion occurs through the configured platform workflow and agent. Submission does not mean deletion is complete.</li>
           </ul>
 
-          <div class="pt-2">
+          <div id="erasureRequestActions" class="pt-2">
             <button onclick="promptErasureModal()" class="px-5 py-2.5 rounded-full bg-red-700 text-white text-xs font-semibold hover:bg-red-800 transition flex items-center gap-2">
               <i data-lucide="trash-2" class="w-4 h-4"></i>
               <span>Request Account Erasure</span>
             </button>
           </div>
+
+          <!-- Inline OTP panel: stays on the page when switching browser tabs (native prompt/modals do not) -->
+          <form id="erasureOtpForm" onsubmit="verifyAccountErasure(event)" class="hidden space-y-3 pt-2 border-t border-red-200">
+            <p id="erasureOtpMessage" class="text-sm text-red-950" aria-live="polite">Enter the six-digit code sent to your email. You can switch tabs to check your inbox; this form stays on the page.</p>
+            <label for="erasureOtpCode" class="block text-sm font-semibold text-charcoal">Email verification code</label>
+            <input id="erasureOtpCode" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required class="w-full rounded-lg border border-red-200 bg-white px-4 py-3 text-lg tracking-widest" placeholder="123456">
+            <button id="erasureVerifyButton" type="submit" class="w-full py-3 px-4 rounded-full bg-red-700 text-white font-semibold text-xs hover:bg-red-800 transition">Verify & Submit Deletion Request</button>
+            <button type="button" onclick="cancelErasureVerification()" class="w-full py-2.5 px-4 rounded-full bg-white text-gray-700 font-semibold text-xs border border-gray-200 hover:bg-gray-50 transition">Cancel verification</button>
+            <p id="erasureError" class="hidden text-sm text-red-700" role="alert"></p>
+          </form>
         </div>
       </div>
     </div>
@@ -307,9 +317,9 @@
     </div>
   </div>
 
-  <!-- Right to Erasure Confirmation Modal -->
+  <!-- Confirmation only — OTP is entered inline on the page so tab switches cannot dismiss it -->
   <div id="erasureModal" role="dialog" aria-modal="true" aria-label="Confirm account erasure" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm hidden">
-    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 space-y-5 border border-red-200 animate-in fade-in zoom-in-95 duration-200">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl p-6 space-y-5 border border-red-200 animate-in fade-in zoom-in-95 duration-200" onclick="event.stopPropagation()">
       <div class="flex items-center gap-3 text-red-700">
         <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
           <i data-lucide="alert-octagon" class="w-5 h-5 text-red-600"></i>
@@ -328,18 +338,11 @@
         <button id="erasureStartButton" onclick="executeAccountErasure()" class="w-full py-3 px-4 rounded-full bg-red-700 text-white font-semibold text-xs hover:bg-red-800 transition">
           Yes, Schedule Account Erasure
         </button>
-        <button onclick="closeErasureModal()" class="w-full py-2.5 px-4 rounded-full bg-gray-100 text-gray-700 font-semibold text-xs hover:bg-gray-200 transition">
+        <button type="button" onclick="closeErasureModal()" class="w-full py-2.5 px-4 rounded-full bg-gray-100 text-gray-700 font-semibold text-xs hover:bg-gray-200 transition">
           Cancel & Keep Account
         </button>
+        <p id="erasureModalError" class="hidden text-sm text-red-700" role="alert"></p>
       </div>
-      <form id="erasureOtpForm" onsubmit="verifyAccountErasure(event)" class="hidden space-y-3 pt-2">
-        <p id="erasureOtpMessage" class="text-sm text-gray-700" aria-live="polite">Enter the six-digit code sent to your email. You can switch tabs to check your inbox; this form stays open.</p>
-        <label for="erasureOtpCode" class="block text-sm font-semibold text-charcoal">Email verification code</label>
-        <input id="erasureOtpCode" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required class="w-full rounded-lg border border-gray-300 px-4 py-3 text-lg tracking-widest" placeholder="123456">
-        <button id="erasureVerifyButton" type="submit" class="w-full py-3 px-4 rounded-full bg-red-700 text-white font-semibold text-xs hover:bg-red-800 transition">Verify & Submit Deletion Request</button>
-        <button type="button" onclick="closeErasureModal()" class="w-full py-2.5 px-4 rounded-full bg-gray-100 text-gray-700 font-semibold text-xs hover:bg-gray-200 transition">Close — verify later</button>
-      </form>
-      <p id="erasureError" class="hidden text-sm text-red-700" role="alert"></p>
     </div>
   </div>
 
